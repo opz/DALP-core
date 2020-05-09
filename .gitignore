@@ -4,3 +4,7 @@ node_modules/
 # Buidler files
 cache/
 artifacts/
+
+# Solidity coverage files
+coverage/
+coverage.json
