@@ -2,7 +2,7 @@ pragma solidity ^0.6.7;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-abstract contract DALP is ERC20 {
+contract DALP is ERC20("DALP Token", "DALPa") {
     function _mint() public payable {
         uint mintAmount = calculateMintAmount();
         return super._mint(msg.sender, mintAmount);
