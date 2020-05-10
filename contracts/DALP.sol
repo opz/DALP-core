@@ -7,12 +7,11 @@ contract DALP is ERC20("DALP Token", "DALPa"), Ownable {
     // DALPManager contract
     address public manager;
 
-    function mint(address investor) external payable onlyManager {
-        _mint(investor);
+    function mint(address investor, uint mintAmount) external payable onlyManager {
+        _mint(investor, mintAmount);
     }
 
-    function _mint(address investor) internal {
-        uint mintAmount = calculateMintAmount();
+    function _mint(address investor , uint mintAmount) internal override {
         return super._mint(investor, mintAmount);
     }
 
@@ -24,9 +23,7 @@ contract DALP is ERC20("DALP Token", "DALPa"), Ownable {
         return super._burn(investor, tokensToBurn);
     }
 
-    function calculateMintAmount() public view returns(uint){
-        return 10; // placeholder logic
-    }
+ 
 
     modifier onlyManager {
         require(msg.sender == manager, "Only Manager contract can call");
