@@ -16,7 +16,7 @@ contract DALPManager is Ownable {
     function mint() public payable {
         require(msg.value > 0, "Must send ETH");
         uint mintAmount = calculateMintAmount();
-        dalp.mint.value(msg.value)(msg.sender, mintAmount);
+        dalp.mint(msg.sender, mintAmount);
     }
 
     function burn(uint tokensToBurn) public {
@@ -26,7 +26,7 @@ contract DALPManager is Ownable {
         dalp.burn(msg.sender, tokensToBurn);
     }
 
-    function calculateMintAmount() public view returns(uint){
+    function calculateMintAmount() public view returns (uint) {
         return 10; // placeholder logic
     }
 }
