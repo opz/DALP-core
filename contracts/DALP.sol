@@ -7,7 +7,7 @@ contract DALP is ERC20("DALP Token", "DALPa"), Ownable {
     // DALPManager contract
     address public manager;
 
-    function mint(address investor, uint mintAmount) external payable onlyManager {
+    function mint(address investor, uint mintAmount) external onlyManager {
         _mint(investor, mintAmount);
     }
 
