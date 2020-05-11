@@ -26,7 +26,7 @@ contract DALPManager is Ownable {
         dalp.burn(msg.sender, tokensToBurn);
     }
 
-    function calculateMintAmount() public view returns(uint){
+    function calculateMintAmount() public view returns (uint) {
         return 10; // placeholder logic
     }
 }
