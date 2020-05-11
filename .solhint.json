@@ -7,7 +7,7 @@
     "modifier-name-mixedcase": "warn",
     "private-vars-leading-underscore": "warn",
     "func-order": "warn",
-    "mark-callable-contracts": "warn",
-    "compiler-version": ["error", "^0.6.7"]
+    "compiler-version": ["error", "^0.6.7"],
+    "mark-callable-contracts": "off"
   }
 }
