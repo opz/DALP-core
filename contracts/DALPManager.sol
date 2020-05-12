@@ -11,8 +11,16 @@ import {IUniswapV2Router01} from "@uniswap/v2-periphery/contracts/interfaces/IUn
 import {DALP} from "./DALP.sol";
 
 contract DALPManager is Ownable {
+    //----------------------------------------
+    // Type definitions
+    //----------------------------------------
+
     using FixedPoint for *;
     using SafeERC20 for IERC20;
+
+    //----------------------------------------
+    // State variables
+    //----------------------------------------
 
     uint112 private constant MAX_UINT112 = uint112(-1);
     uint private constant UNISWAP_V2_DEADLINE_DELTA = 15 minutes;
@@ -20,9 +28,17 @@ contract DALPManager is Ownable {
     // Limit slippage to 0.5%
     uint112 private constant UNISWAP_V2_SLIPPAGE_LIMIT = 200;
 
+    //----------------------------------------
+    // State variables
+    //----------------------------------------
+
     DALP public dalp; // DALP token
     IUniswapV2Router01 private immutable uniswapRouter;
     address private immutable WETH;
+
+    //----------------------------------------
+    // Events
+    //----------------------------------------
 
     event AddUniswapLiquidity(
         address tokenA,
@@ -34,10 +50,18 @@ contract DALPManager is Ownable {
         uint liquidity
     );
 
+    //----------------------------------------
+    // Constructor
+    //----------------------------------------
+
     constructor(IUniswapV2Router01 _uniswapRouter) public {
         uniswapRouter = _uniswapRouter;
         WETH = _uniswapRouter.WETH();
     }
+
+    //----------------------------------------
+    // Public functions
+    //----------------------------------------
 
     // called by admin on deployment
     function setTokenContract(address _tokenAddress) public onlyOwner {
@@ -57,9 +81,17 @@ contract DALPManager is Ownable {
         dalp.burn(msg.sender, tokensToBurn);
     }
 
+    //----------------------------------------
+    // Public views
+    //----------------------------------------
+
     function calculateMintAmount() public view returns (uint) {
         return 10; // placeholder logic
     }
+
+    //----------------------------------------
+    // Internal functions
+    //----------------------------------------
 
     /**
      * @notice Add liquidity to a Uniswap pool with DALP controlled assets
@@ -135,6 +167,10 @@ contract DALPManager is Ownable {
             now + UNISWAP_V2_DEADLINE_DELTA // solhint-disable-line not-rely-on-time
         );
     }
+
+    //----------------------------------------
+    // Internal views
+    //----------------------------------------
 
     /**
      * @notice Get the amount of token B that is equivalent to the given amount of token A
