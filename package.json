@@ -33,6 +33,7 @@
   },
   "dependencies": {
     "@openzeppelin/contracts": "^3.0.1",
+    "@uniswap/lib": "^1.1.2",
     "@uniswap/v2-periphery": "^1.0.0-beta.0"
   }
 }
