@@ -9,6 +9,8 @@ import {UniswapV2Library} from "@uniswap/v2-periphery/contracts/libraries/Uniswa
 import {IUniswapV2Router01} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router01.sol";
 
 import {DALP} from "./DALP.sol";
+import {SimpleOracle} from "./SimpleOracle.sol";
+import {IUniswapV2Pair} from "./interface/IUniswapV2Pair.sol";
 
 contract DALPManager is Ownable {
     //----------------------------------------
@@ -28,6 +30,9 @@ contract DALPManager is Ownable {
     // Limit slippage to 0.5%
     uint112 private constant UNISWAP_V2_SLIPPAGE_LIMIT = 200;
 
+    // Liquidity provision address
+    address private uniswapPair;
+
     //----------------------------------------
     // State variables
     //----------------------------------------
@@ -35,6 +40,7 @@ contract DALPManager is Ownable {
     DALP public dalp; // DALP token
     IUniswapV2Router01 private immutable uniswapRouter;
     address private immutable WETH;
+    SimpleOracle private oracle;
 
     //----------------------------------------
     // Events
@@ -54,9 +60,10 @@ contract DALPManager is Ownable {
     // Constructor
     //----------------------------------------
 
-    constructor(IUniswapV2Router01 _uniswapRouter) public {
+    constructor(IUniswapV2Router01 _uniswapRouter, SimpleOracle _oracle) public {
         uniswapRouter = _uniswapRouter;
         WETH = _uniswapRouter.WETH();
+        oracle = _oracle;
     }
 
     //----------------------------------------
@@ -70,6 +77,7 @@ contract DALPManager is Ownable {
 
     function mint() public payable {
         require(msg.value > 0, "Must send ETH");
+        oracle.update();
         uint mintAmount = calculateMintAmount();
         dalp.mint(msg.sender, mintAmount);
     }
@@ -85,13 +93,37 @@ contract DALPManager is Ownable {
     // Public views
     //----------------------------------------
 
-    function calculateMintAmount() public view returns (uint) {
-        return 10; // placeholder logic
+    function getUniswapPoolTokenHoldings() public view returns(uint){
+        return IERC20(uniswapPair).balanceOf(address(this));
     }
+
+    function getUniswapPoolTokenSupply() public view returns(uint){
+        return IERC20(uniswapPair).totalSupply();
+    }
+
+    function getUniswapPoolReserves() public view returns(uint112 reserve0, uint112 reserve1){
+        (reserve0, reserve1, ) = IUniswapV2Pair(uniswapPair).getReserves();
+    }
+
+    function getDalpProportionalReserves() public view returns(uint reserve0Share, uint reserve1Share){
+        uint totalLiquidityTokens = getUniswapPoolTokenSupply();
+        uint contractLiquidityTokens = getUniswapPoolTokenHoldings();
+        (uint112 reserve0, uint112 reserve1) = getUniswapPoolReserves();
+
+        // does this casting work?
+        uint256 reserve0Casted = uint256(reserve0);
+        uint256 reserve1Casted = uint256(reserve1);
+
+        // underlying liquidity of contract's pool tokens
+        reserve0Share = reserve0Casted.mul(contractLiquidityTokens).div(totalLiquidityTokens);
+        reserve1Share = reserve1Casted.mul(contractLiquidityTokens).div(totalLiquidityTokens);
+    }
+
 
     //----------------------------------------
     // Internal functions
     //----------------------------------------
+  
 
     /**
      * @notice Add liquidity to a Uniswap pool with DALP controlled assets
@@ -172,6 +204,10 @@ contract DALPManager is Ownable {
     // Internal views
     //----------------------------------------
 
+    function calculateMintAmount() internal view returns (uint) {
+        return 10; // placeholder logic
+    }
+
     /**
      * @notice Get the amount of token B that is equivalent to the given amount of token A
      * @param tokenA The address of token A
@@ -191,5 +227,13 @@ contract DALPManager is Ownable {
         );
 
         return uniswapRouter.quote(amountA, reserveA, reserveB);
+    }
+
+    //----------------------------------------
+    // Address setters
+    //----------------------------------------
+
+    function setUniswapPair(address _uniswapPair) public onlyOwner {
+        uniswapPair = _uniswapPair;
     }
 }
