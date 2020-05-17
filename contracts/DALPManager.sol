@@ -3,14 +3,15 @@ pragma solidity ^0.6.6;
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
+// import {SafeMath} from "@openzeppelin/contracts/math/SafeMath.sol";
 
 import {FixedPoint} from "@uniswap/lib/contracts/libraries/FixedPoint.sol";
 import {UniswapV2Library} from "@uniswap/v2-periphery/contracts/libraries/UniswapV2Library.sol";
 import {IUniswapV2Router01} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router01.sol";
 
 import {DALP} from "./DALP.sol";
-import {SimpleOracle} from "./SimpleOracle.sol";
-import {IUniswapV2Pair} from "./interface/IUniswapV2Pair.sol";
+import {OracleManager} from "./OracleManager.sol";
+import {IUniswapV2Pair} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
 
 contract DALPManager is Ownable {
     //----------------------------------------
@@ -19,6 +20,7 @@ contract DALPManager is Ownable {
 
     using FixedPoint for *;
     using SafeERC20 for IERC20;
+    // using SafeMath for uint256;
 
     //----------------------------------------
     // State variables
@@ -40,7 +42,7 @@ contract DALPManager is Ownable {
     DALP public dalp; // DALP token
     IUniswapV2Router01 private immutable uniswapRouter;
     address private immutable WETH;
-    SimpleOracle private oracle;
+    OracleManager private oracle;
 
     //----------------------------------------
     // Events
@@ -60,7 +62,7 @@ contract DALPManager is Ownable {
     // Constructor
     //----------------------------------------
 
-    constructor(IUniswapV2Router01 _uniswapRouter, SimpleOracle _oracle) public {
+    constructor(IUniswapV2Router01 _uniswapRouter, OracleManager _oracle) public {
         uniswapRouter = _uniswapRouter;
         WETH = _uniswapRouter.WETH();
         oracle = _oracle;
@@ -77,7 +79,7 @@ contract DALPManager is Ownable {
 
     function mint() public payable {
         require(msg.value > 0, "Must send ETH");
-        oracle.update();
+        // oracle.update();
         uint mintAmount = calculateMintAmount();
         dalp.mint(msg.sender, mintAmount);
     }
@@ -105,7 +107,7 @@ contract DALPManager is Ownable {
         (reserve0, reserve1, ) = IUniswapV2Pair(uniswapPair).getReserves();
     }
 
-    function getDalpProportionalReserves() public view returns(uint reserve0Share, uint reserve1Share){
+    function getDalpProportionalReserves() public view returns(uint112 reserve0Share, uint112 reserve1Share){
         uint totalLiquidityTokens = getUniswapPoolTokenSupply();
         uint contractLiquidityTokens = getUniswapPoolTokenHoldings();
         (uint112 reserve0, uint112 reserve1) = getUniswapPoolReserves();
@@ -115,8 +117,16 @@ contract DALPManager is Ownable {
         uint256 reserve1Casted = uint256(reserve1);
 
         // underlying liquidity of contract's pool tokens
-        reserve0Share = reserve0Casted.mul(contractLiquidityTokens).div(totalLiquidityTokens);
-        reserve1Share = reserve1Casted.mul(contractLiquidityTokens).div(totalLiquidityTokens);
+        // returns underlying reserves holding of this contract for each asset
+
+        reserve0Share = reserve0Casted * (contractLiquidityTokens) / (totalLiquidityTokens);
+        // reserve0Share = reserve0 * (contractLiquidityTokens) / (totalLiquidityTokens);
+        // reserve0Share = reserve0.mul(contractLiquidityTokens).div(totalLiquidityTokens);
+        // reserve0Share = reserve0Casted.mul(contractLiquidityTokens).div(totalLiquidityTokens);
+        reserve1Share = reserve1Casted * (contractLiquidityTokens) / (totalLiquidityTokens);
+        // reserve1Share = reserve1 * (contractLiquidityTokens) / (totalLiquidityTokens);
+        // reserve1Share = reserve1.mul(contractLiquidityTokens).div(totalLiquidityTokens);
+        // reserve1Share = reserve1Casted.mul(contractLiquidityTokens).div(totalLiquidityTokens);
     }
 
 
@@ -205,7 +215,9 @@ contract DALPManager is Ownable {
     //----------------------------------------
 
     function calculateMintAmount() internal view returns (uint) {
-        return 10; // placeholder logic
+        (uint reserve0Share, uint reserve1Share) = getDalpProportionalReserves();
+        // calculate value on WETH pair for each reserve share
+
     }
 
     /**
@@ -233,7 +245,14 @@ contract DALPManager is Ownable {
     // Address setters
     //----------------------------------------
 
-    function setUniswapPair(address _uniswapPair) public onlyOwner {
-        uniswapPair = _uniswapPair;
-    }
+    // function setUniswapPair(address _uniswapPair) public onlyOwner {
+    //     uniswapPair = _uniswapPair; //
+    // }
+
+    // need to know which liquidity network
+    // need to know which liquidity pair
+    // need to know pair addresses
+    // function addLiquidityPool(){
+        
+    // }
 }
