@@ -167,7 +167,7 @@ contract DALPManager is Ownable {
         path[1] = token;
 
         // solhint-disable-next-line indent, bracket-align
-        return uniswapRouter.swapExactETHForTokens{value: amountInMax}(
+        return uniswapRouter.swapETHForExactTokens{value: amountInMax}(
             amountOut,
             path,
             address(this), 
