@@ -102,6 +102,8 @@ contract DALPManager is Ownable {
 
     /**
      * @notice Add liquidity to a Uniswap pool with DALP controlled assets
+     * @dev The larger the discrepancy between WETH <-> token pairs and the token <-> token pair,
+     *      the more ETH will be left behind after adding liquidity.
      * @param tokenA First token in the Uniswap pair
      * @param tokenB Second token in the Uniswap pair
      * TODO: Track token dust left over from swaps and adding liquidity
@@ -153,6 +155,7 @@ contract DALPManager is Ownable {
         internal
         returns (uint112, uint112)
     {
+        // Get maximum amount of tokens that can be swapped with half the ETH balance
         uint amountAOut = _getAmountOutForUniswapV2(_WETH, tokenA, address(this).balance / 2);
         uint amountBOut = _getAmountOutForUniswapV2(
             _WETH,
@@ -160,18 +163,19 @@ contract DALPManager is Ownable {
             address(this).balance - (address(this).balance / 2)
         );
 
+        // Get the balanced amounts for the target pair that is less than the maximum swap amount
         uint amountBEquiv = _getEquivalentAmountForUniswapV2(tokenA, tokenB, amountAOut);
-
         if (amountBEquiv > amountBOut) {
             amountBEquiv = amountBOut;
         }
-
         uint amountAEquiv = _getEquivalentAmountForUniswapV2(tokenB, tokenA, amountBEquiv);
 
+        // Swap for token A
         uint[] memory amountsA = _swapForTokens(tokenA, address(this).balance / 2, amountAEquiv);
         require(amountsA[1] <= _MAX_UINT112, "DALPManager/overflow");
         uint112 amountADesired = uint112(amountsA[1]);
 
+        // Swap for token B
         uint[] memory amountsB = _swapForTokens(tokenB, address(this).balance, amountBEquiv);
         require(amountsB[1] <= _MAX_UINT112, "DALPManager/overflow");
         uint112 amountBDesired = uint112(amountsB[1]);
