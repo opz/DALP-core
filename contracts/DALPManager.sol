@@ -60,6 +60,13 @@ contract DALPManager is Ownable {
     }
 
     //----------------------------------------
+    // Receive function
+    //----------------------------------------
+
+    // solhint-disable-next-line no-empty-blocks
+    receive() external payable {}
+
+    //----------------------------------------
     // Public functions
     //----------------------------------------
 
