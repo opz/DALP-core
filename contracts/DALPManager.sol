@@ -22,19 +22,19 @@ contract DALPManager is Ownable {
     // State variables
     //----------------------------------------
 
-    uint112 private constant MAX_UINT112 = uint112(-1);
-    uint private constant UNISWAP_V2_DEADLINE_DELTA = 15 minutes;
+    uint112 private constant _MAX_UINT112 = uint112(-1);
+    uint private constant _UNISWAP_V2_DEADLINE_DELTA = 15 minutes;
 
     // Limit slippage to 0.5%
-    uint112 private constant UNISWAP_V2_SLIPPAGE_LIMIT = 200;
+    uint112 private constant _UNISWAP_V2_SLIPPAGE_LIMIT = 200;
 
     //----------------------------------------
     // State variables
     //----------------------------------------
 
     DALP public dalp; // DALP token
-    IUniswapV2Router01 private immutable uniswapRouter;
-    address private immutable WETH;
+    IUniswapV2Router01 private immutable _uniswapRouter;
+    address private immutable _WETH; // solhint-disable-line var-name-mixedcase
 
     //----------------------------------------
     // Events
@@ -54,9 +54,9 @@ contract DALPManager is Ownable {
     // Constructor
     //----------------------------------------
 
-    constructor(IUniswapV2Router01 _uniswapRouter) public {
-        uniswapRouter = _uniswapRouter;
-        WETH = _uniswapRouter.WETH();
+    constructor(IUniswapV2Router01 uniswapRouter) public {
+        _uniswapRouter = uniswapRouter;
+        _WETH = uniswapRouter.WETH();
     }
 
     //----------------------------------------
@@ -112,21 +112,21 @@ contract DALPManager is Ownable {
         (
             uint112 amountADesired,
             uint112 amountBDesired
-        ) = getAmountDesiredUniswapV2(tokenA, tokenB);
+        ) = _getAmountDesiredUniswapV2(tokenA, tokenB);
 
         // Approve tokens for transfer to Uniswap pair
-        IERC20(tokenA).safeApprove(address(uniswapRouter), amountADesired); 
-        IERC20(tokenB).safeApprove(address(uniswapRouter), amountBDesired); 
+        IERC20(tokenA).safeApprove(address(_uniswapRouter), amountADesired);
+        IERC20(tokenB).safeApprove(address(_uniswapRouter), amountBDesired);
 
-        (uint amountA, uint amountB, uint liquidity) = uniswapRouter.addLiquidity(
+        (uint amountA, uint amountB, uint liquidity) = _uniswapRouter.addLiquidity(
             tokenA,
             tokenB,
             amountADesired,
             amountBDesired,
-            amountADesired - FixedPoint.encode(amountADesired).div(UNISWAP_V2_SLIPPAGE_LIMIT).decode(),
-            amountBDesired - FixedPoint.encode(amountBDesired).div(UNISWAP_V2_SLIPPAGE_LIMIT).decode(),
+            amountADesired - FixedPoint.encode(amountADesired).div(_UNISWAP_V2_SLIPPAGE_LIMIT).decode(),
+            amountBDesired - FixedPoint.encode(amountBDesired).div(_UNISWAP_V2_SLIPPAGE_LIMIT).decode(),
             address(this),
-            now + UNISWAP_V2_DEADLINE_DELTA // solhint-disable-line not-rely-on-time
+            now + _UNISWAP_V2_DEADLINE_DELTA // solhint-disable-line not-rely-on-time
         );
 
         emit AddUniswapLiquidity(
@@ -149,31 +149,31 @@ contract DALPManager is Ownable {
      * @return The desired amount of token A and token B
      * TODO: Handle ETH pairs
      */
-    function getAmountDesiredUniswapV2(address tokenA, address tokenB)
+    function _getAmountDesiredUniswapV2(address tokenA, address tokenB)
         internal
         returns (uint112, uint112)
     {
-        uint amountAOut = getAmountOutForUniswapV2(WETH, tokenA, address(this).balance / 2);
-        uint amountBOut = getAmountOutForUniswapV2(
-            WETH,
+        uint amountAOut = _getAmountOutForUniswapV2(_WETH, tokenA, address(this).balance / 2);
+        uint amountBOut = _getAmountOutForUniswapV2(
+            _WETH,
             tokenB,
             address(this).balance - (address(this).balance / 2)
         );
 
-        uint amountBEquiv = getEquivalentAmountForUniswapV2(tokenA, tokenB, amountAOut);
+        uint amountBEquiv = _getEquivalentAmountForUniswapV2(tokenA, tokenB, amountAOut);
 
         if (amountBEquiv > amountBOut) {
             amountBEquiv = amountBOut;
         }
 
-        uint amountAEquiv = getEquivalentAmountForUniswapV2(tokenB, tokenA, amountBEquiv);
+        uint amountAEquiv = _getEquivalentAmountForUniswapV2(tokenB, tokenA, amountBEquiv);
 
-        uint[] memory amountsA = swapForTokens(tokenA, address(this).balance / 2, amountAEquiv);
-        require(amountsA[1] <= MAX_UINT112, "DALPManager/overflow");
+        uint[] memory amountsA = _swapForTokens(tokenA, address(this).balance / 2, amountAEquiv);
+        require(amountsA[1] <= _MAX_UINT112, "DALPManager/overflow");
         uint112 amountADesired = uint112(amountsA[1]);
 
-        uint[] memory amountsB = swapForTokens(tokenB, address(this).balance, amountBEquiv);
-        require(amountsB[1] <= MAX_UINT112, "DALPManager/overflow");
+        uint[] memory amountsB = _swapForTokens(tokenB, address(this).balance, amountBEquiv);
+        require(amountsB[1] <= _MAX_UINT112, "DALPManager/overflow");
         uint112 amountBDesired = uint112(amountsB[1]);
 
         return (amountADesired, amountBDesired);
@@ -186,24 +186,19 @@ contract DALPManager is Ownable {
      * @param amountOut The number of tokens to receive
      * @return A two element array of the ETH sent and the tokens received
      */
-    function swapForTokens(
-        address token,
-        uint amountInMax, // solhint-disable-line no-unused-vars
-        uint amountOut
-    )
+    function _swapForTokens(address token, uint amountInMax, uint amountOut)
         internal
         returns (uint[] memory)
     {
         address[] memory path = new address[](2);
-        path[0] = WETH;
+        path[0] = _WETH;
         path[1] = token;
 
-        // solhint-disable-next-line indent, bracket-align
-        return uniswapRouter.swapETHForExactTokens{value: amountInMax}(
+        return _uniswapRouter.swapETHForExactTokens{value: amountInMax}(
             amountOut,
             path,
             address(this), 
-            now + UNISWAP_V2_DEADLINE_DELTA // solhint-disable-line not-rely-on-time
+            now + _UNISWAP_V2_DEADLINE_DELTA // solhint-disable-line not-rely-on-time
         );
     }
 
@@ -218,18 +213,18 @@ contract DALPManager is Ownable {
      * @param amountA The amount of token A
      * @return The equivalent amount of token B
      */
-    function getEquivalentAmountForUniswapV2(address tokenA, address tokenB, uint amountA)
+    function _getEquivalentAmountForUniswapV2(address tokenA, address tokenB, uint amountA)
         internal
         view
         returns (uint)
     {
         (uint reserveA, uint reserveB) = UniswapV2Library.getReserves(
-            uniswapRouter.factory(),
+            _uniswapRouter.factory(),
             tokenA,
             tokenB
         );
 
-        return uniswapRouter.quote(amountA, reserveA, reserveB);
+        return _uniswapRouter.quote(amountA, reserveA, reserveB);
     }
 
     /**
@@ -239,17 +234,17 @@ contract DALPManager is Ownable {
      * @param amountInA The amount of token A
      * @return The amount of token B that can be swapped for token A
      */
-    function getAmountOutForUniswapV2(address tokenA, address tokenB, uint amountInA)
+    function _getAmountOutForUniswapV2(address tokenA, address tokenB, uint amountInA)
         internal
         view
         returns (uint)
     {
         (uint reserveA, uint reserveB) = UniswapV2Library.getReserves(
-            uniswapRouter.factory(),
+            _uniswapRouter.factory(),
             tokenA,
             tokenB
         );
 
-        return uniswapRouter.getAmountOut(amountInA, reserveA, reserveB);
+        return _uniswapRouter.getAmountOut(amountInA, reserveA, reserveB);
     }
 }
