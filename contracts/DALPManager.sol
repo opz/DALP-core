@@ -106,20 +106,13 @@ contract DALPManager is Ownable {
      * @param tokenB Second token in the Uniswap pair
      * TODO: Track token dust left over from swaps and adding liquidity
      */
-    function addUniswapV2Liquidity(address tokenA, address tokenB) internal {
-        // Get amount of token A required for adding liquidity
-        uint amountAOut = getEquivalentAmountForUniswapV2(WETH, tokenA, address(this).balance);
-        uint[] memory amountsA = swapForTokens(tokenA, address(this).balance / 2, amountAOut / 2);
+    function _addUniswapV2Liquidity(address tokenA, address tokenB) internal {
+        require(address(this).balance > 0, "DALPManager/insufficient-balance");
 
-        require(amountsA[1] <= MAX_UINT112, "DALPManager/overflow");
-        uint112 amountADesired = uint112(amountsA[1]);
-
-        // Get amount of token B required for adding liquidity
-        uint amountBOut = getEquivalentAmountForUniswapV2(tokenA, tokenB, amountADesired);
-        uint[] memory amountsB = swapForTokens(tokenB, address(this).balance, amountBOut);
-
-        require(amountsB[1] <= MAX_UINT112, "DALPManager/overflow");
-        uint112 amountBDesired = uint112(amountsB[1]);
+        (
+            uint112 amountADesired,
+            uint112 amountBDesired
+        ) = getAmountDesiredUniswapV2(tokenA, tokenB);
 
         // Approve tokens for transfer to Uniswap pair
         IERC20(tokenA).safeApprove(address(uniswapRouter), amountADesired); 
