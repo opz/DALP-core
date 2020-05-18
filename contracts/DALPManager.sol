@@ -199,4 +199,25 @@ contract DALPManager is Ownable {
 
         return uniswapRouter.quote(amountA, reserveA, reserveB);
     }
+
+    /**
+     * @notice Get the amount of token B that can be swapped for the given amount of token A
+     * @param tokenA The address of token A
+     * @param tokenB The address of token B
+     * @param amountInA The amount of token A
+     * @return The amount of token B that can be swapped for token A
+     */
+    function getAmountOutForUniswapV2(address tokenA, address tokenB, uint amountInA)
+        internal
+        view
+        returns (uint)
+    {
+        (uint reserveA, uint reserveB) = UniswapV2Library.getReserves(
+            uniswapRouter.factory(),
+            tokenA,
+            tokenB
+        );
+
+        return uniswapRouter.getAmountOut(amountInA, reserveA, reserveB);
+    }
 }
