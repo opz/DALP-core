@@ -148,6 +148,45 @@ contract DALPManager is Ownable {
     }
 
     /**
+     * @notice Get the amount of tokens the DALP can afford to add to a Uniswap v2 pair
+     * @dev It was necessary to refactor this code out of `_addUniswapV2Liquidity` to avoid a
+     *      "Stack too deep" error.
+     * @param tokenA First token in the Uniswap pair
+     * @param tokenB Second token in the Uniswap pair
+     * @return The desired amount of token A and token B
+     * TODO: Handle ETH pairs
+     */
+    function getAmountDesiredUniswapV2(address tokenA, address tokenB)
+        internal
+        returns (uint112, uint112)
+    {
+        uint amountAOut = getAmountOutForUniswapV2(WETH, tokenA, address(this).balance / 2);
+        uint amountBOut = getAmountOutForUniswapV2(
+            WETH,
+            tokenB,
+            address(this).balance - (address(this).balance / 2)
+        );
+
+        uint amountBEquiv = getEquivalentAmountForUniswapV2(tokenA, tokenB, amountAOut);
+
+        if (amountBEquiv > amountBOut) {
+            amountBEquiv = amountBOut;
+        }
+
+        uint amountAEquiv = getEquivalentAmountForUniswapV2(tokenB, tokenA, amountBEquiv);
+
+        uint[] memory amountsA = swapForTokens(tokenA, address(this).balance / 2, amountAEquiv);
+        require(amountsA[1] <= MAX_UINT112, "DALPManager/overflow");
+        uint112 amountADesired = uint112(amountsA[1]);
+
+        uint[] memory amountsB = swapForTokens(tokenB, address(this).balance, amountBEquiv);
+        require(amountsB[1] <= MAX_UINT112, "DALPManager/overflow");
+        uint112 amountBDesired = uint112(amountsB[1]);
+
+        return (amountADesired, amountBDesired);
+    }
+
+    /**
      * @notice Swap DALP ETH for tokens
      * @param token The token address
      * @param amountInMax The maximum amount of ETH to swap
