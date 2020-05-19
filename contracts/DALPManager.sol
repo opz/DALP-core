@@ -344,6 +344,14 @@ contract DALPManager is Ownable {
     // Internal views
     //----------------------------------------
 
+    /**
+     * @notice Get balanced token amounts for adding liquidity to a Uniswap v2 pair
+     * @param tokenA The address of token A
+     * @param tokenB The address of token B
+     * @param amountA The amount of token A available
+     * @param amountB The amount of token B available
+     * @return The balanced amounts for token A and B
+     */
     function _getBalancedAmountsForUniswapV2(
         address tokenA,
         address tokenB,
