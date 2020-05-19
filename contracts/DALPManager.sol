@@ -107,7 +107,6 @@ contract DALPManager is Ownable {
      *      the more ETH will be left behind after adding liquidity.
      * @param tokenA First token in the Uniswap pair
      * @param tokenB Second token in the Uniswap pair
-     * TODO: Track token dust left over from swaps and adding liquidity
      */
     function _addUniswapV2Liquidity(address tokenA, address tokenB) internal {
         require(address(this).balance > 0, "DALPManager/insufficient-balance");
@@ -157,6 +156,27 @@ contract DALPManager is Ownable {
             address(this),
             now + _UNISWAP_V2_DEADLINE_DELTA // solhint-disable-line not-rely-on-time
         );
+
+        // Swap token A dust to WETH
+        if (tokenA != _WETH) {
+            uint amountAIn = IERC20(tokenA).balanceOf(address(this));
+
+            if (amountAIn > 0) {
+                _swapTokensForWETH(tokenA, amountAIn);
+            }
+        }
+
+        // Swap token B dust to WETH
+        if (tokenB != _WETH) {
+            uint amountBIn = IERC20(tokenB).balanceOf(address(this));
+
+            if (amountBIn > 0) {
+                _swapTokensForWETH(tokenB, amountBIn);
+            }
+        }
+
+        // Withdraw WETH dust back to ETH
+        IWETH(_WETH).withdraw(IERC20(_WETH).balanceOf(address(this)));
 
         emit AddUniswapLiquidity(
             tokenA,
@@ -282,6 +302,38 @@ contract DALPManager is Ownable {
 
         return _uniswapRouter.swapETHForExactTokens{value: amountInMax}(
             amountOut,
+            path,
+            address(this), 
+            now + _UNISWAP_V2_DEADLINE_DELTA // solhint-disable-line not-rely-on-time
+        );
+    }
+
+    /**
+     * @notice Swap DALP tokens for WETH
+     * @notice Used to clean up token dust after adding liquidity
+     * @param token The token to swap for WETH
+     * @param amountIn The amount of tokens to swap
+     * @return A two element array of the tokens sent and the WETH received
+     */
+    function _swapTokensForWETH(address token, uint amountIn) internal returns (uint[] memory) {
+        uint amountOut = _getAmountOutForUniswapV2(token, _WETH, amountIn);
+        require(amountOut <= _MAX_UINT112, "DALPManager/overflow");
+        uint amountOutMin = amountOut - (
+            FixedPoint
+                .encode(uint112(amountOut))
+                .div(_UNISWAP_V2_SLIPPAGE_LIMIT)
+                .decode()
+        );
+
+        address[] memory path = new address[](2);
+        path[0] = token;
+        path[1] = _WETH;
+
+        IERC20(token).safeApprove(address(_uniswapRouter), amountIn);
+
+        return _uniswapRouter.swapExactTokensForTokens(
+            amountIn,
+            amountOutMin,
             path,
             address(this), 
             now + _UNISWAP_V2_DEADLINE_DELTA // solhint-disable-line not-rely-on-time
