@@ -38,39 +38,41 @@ async function uniswapV2Fixture(provider, [wallet]) {
   const token0 = tokenA.address === token0Address ? tokenA : tokenB
   const token1 = tokenA.address === token0Address ? tokenB : tokenA
 
-  // Create ETH and token A pair
-  await factory.createPair(WETH.address, tokenA.address);
-  const pairAddressWETHA = await factory.getPair(WETH.address, tokenA.address);
-  const pairWETHA = new Contract(
-    pairAddressWETHA,
+  // Create ETH and token 0 pair
+  await factory.createPair(WETH.address, token0.address);
+  const pairAddressWETH0 = await factory.getPair(WETH.address, token0.address);
+  const pairWETH0 = new Contract(
+    pairAddressWETH0,
     JSON.stringify(IUniswapV2Pair.abi),
     provider
   ).connect(wallet);
 
-  // Add liquidity to ETH and token A pair
-  const WETHAmountA = utils.parseEther("4");
-  await WETH.deposit({ value: WETHAmountA });
-  await WETH.transfer(pairWETHA.address, WETHAmountA);
-  await tokenA.transfer(pairWETHA.address, utils.parseEther("1"));
-  await pairWETHA.mint(wallet.address);
+  // Add liquidity to ETH and token 0 pair
+  const WETHAmount0 = utils.parseEther("4");
+  await WETH.deposit({ value: WETHAmount0 });
+  await WETH.transfer(pairWETH0.address, WETHAmount0);
+  await token0.transfer(pairWETH0.address, utils.parseEther("1"));
+  await pairWETH0.mint(wallet.address);
 
-  // Create ETH and token B pair
-  await factory.createPair(WETH.address, tokenB.address);
-  const pairAddressWETHB = await factory.getPair(WETH.address, tokenB.address);
-  const pairWETHB = new Contract(
-    pairAddressWETHB,
+  // Create ETH and token 1 pair
+  await factory.createPair(WETH.address, token1.address);
+  const pairAddressWETH1 = await factory.getPair(WETH.address, token1.address);
+  const pairWETH1 = new Contract(
+    pairAddressWETH1,
     JSON.stringify(IUniswapV2Pair.abi),
     provider
   ).connect(wallet);
 
-  // Add liquidity to ETH and token B pair
-  const WETHAmountB = utils.parseEther("4");
-  await WETH.deposit({ value: WETHAmountB });
-  await WETH.transfer(pairWETHB.address, WETHAmountB);
-  await tokenB.transfer(pairWETHB.address, utils.parseEther("4"));
-  await pairWETHB.mint(wallet.address);
+  // Add liquidity to ETH and token 1 pair
+  const WETHAmount1 = utils.parseEther("4");
+  await WETH.deposit({ value: WETHAmount1 });
+  await WETH.transfer(pairWETH1.address, WETHAmount1);
+  await token1.transfer(pairWETH1.address, utils.parseEther("4"));
+  await pairWETH1.mint(wallet.address);
 
-  return { token0, token1, WETH, factory, router, pair, pairWETHA, pairWETHB };
+  return { token0, token1, WETH, factory, router, pair, pairWETH0, pairWETH1 };
+}
+
 }
 
 module.exports = {
