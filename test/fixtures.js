@@ -8,6 +8,9 @@ const ERC20 = require("@uniswap/v2-periphery/build/ERC20.json");
 const WETH9 = require("@uniswap/v2-periphery/build/WETH9.json");
 const UniswapV2Router01 = require("@uniswap/v2-periphery/build/UniswapV2Router01.json");
 
+const DALP = require("../artifacts/DALP.json");
+const DALPManager = require("../artifacts/TestDALPManager.json");
+
 async function uniswapV2Fixture(provider, [wallet]) {
   // Deploy tokens
   const tokenA = await deployContract(wallet, ERC20, [utils.parseEther("1000")]);
@@ -73,8 +76,14 @@ async function uniswapV2Fixture(provider, [wallet]) {
   return { token0, token1, WETH, factory, router, pair, pairWETH0, pairWETH1 };
 }
 
+async function dalpManagerFixture(provider, [wallet]) {
+  const fixture = await uniswapV2Fixture(provider, [wallet]);
+  const dalp = await deployContract(wallet, DALP);
+  const dalpManager = await deployContract(wallet, DALPManager, [fixture.router.address]);
+  return { ...fixture, dalp, dalpManager };
 }
 
 module.exports = {
-  uniswapV2Fixture
+  uniswapV2Fixture,
+  dalpManagerFixture
 };
