@@ -5,6 +5,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 
 import {FixedPoint} from "@uniswap/lib/contracts/libraries/FixedPoint.sol";
+import {IWETH} from "@uniswap/v2-periphery/contracts/interfaces/IWETH.sol";
 import {UniswapV2Library} from "@uniswap/v2-periphery/contracts/libraries/UniswapV2Library.sol";
 import {IUniswapV2Router01} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router01.sol";
 
@@ -111,10 +112,26 @@ contract DALPManager is Ownable {
     function _addUniswapV2Liquidity(address tokenA, address tokenB) internal {
         require(address(this).balance > 0, "DALPManager/insufficient-balance");
 
-        (
-            uint112 amountADesired,
-            uint112 amountBDesired
-        ) = _getAmountDesiredUniswapV2(tokenA, tokenB);
+        uint112 amountADesired;
+        uint112 amountBDesired;
+
+        if (tokenA == _WETH || tokenB == _WETH) {
+            // Get amount desired for a WETH <-> token pair
+            (
+                uint112 amountETHDesired,
+                uint112 amountTokenDesired
+            ) = _getAmountDesiredForWETHPairUniswapV2(tokenA == _WETH ? tokenB : tokenA);
+
+            (amountADesired, amountBDesired) = tokenA == _WETH
+                ? (amountETHDesired, amountTokenDesired)
+                : (amountTokenDesired, amountETHDesired);
+        } else {
+            // Get amount desired for a token <-> token pair
+            (amountADesired, amountBDesired) = _getAmountDesiredForTokenPairUniswapV2(
+                tokenA,
+                tokenB
+            );
+        }
 
         // Approve tokens for transfer to Uniswap pair
         IERC20(tokenA).safeApprove(address(_uniswapRouter), amountADesired);
@@ -125,8 +142,18 @@ contract DALPManager is Ownable {
             tokenB,
             amountADesired,
             amountBDesired,
-            amountADesired - FixedPoint.encode(amountADesired).div(_UNISWAP_V2_SLIPPAGE_LIMIT).decode(),
-            amountBDesired - FixedPoint.encode(amountBDesired).div(_UNISWAP_V2_SLIPPAGE_LIMIT).decode(),
+            amountADesired - (
+                FixedPoint
+                    .encode(amountADesired)
+                    .div(_UNISWAP_V2_SLIPPAGE_LIMIT)
+                    .decode()
+            ),
+            amountBDesired - (
+                FixedPoint
+                    .encode(amountBDesired)
+                    .div(_UNISWAP_V2_SLIPPAGE_LIMIT)
+                    .decode()
+            ),
             address(this),
             now + _UNISWAP_V2_DEADLINE_DELTA // solhint-disable-line not-rely-on-time
         );
@@ -143,15 +170,65 @@ contract DALPManager is Ownable {
     }
 
     /**
+     * @notice Get the amount of tokens the DALP can afford to add to a Uniswap v2 WETH pair
+     * @dev It was necessary to refactor this code out of `_addUniswapV2Liquidity` to avoid a
+     *      "Stack too deep" error.
+     * @param token The token paired with WETH
+     * @return The desired amount of WETH and tokens
+     */
+    function _getAmountDesiredForWETHPairUniswapV2(address token)
+        internal
+        returns (uint112, uint112)
+    {
+        // Get maximum amount of tokens that can be swapped with half the ETH balance
+        uint totalETH = address(this).balance;
+        uint amountETH = totalETH / 2;
+        uint amountTokenOut = _getAmountOutForUniswapV2(_WETH, token, totalETH - amountETH);
+
+        // Get the balanced amounts for the WETH pair that is less than the maximum swap amount
+        (uint amountETHBalanced, uint amountTokenBalanced) = _getBalancedAmountsForUniswapV2(
+            _WETH,
+            token,
+            amountETH,
+            amountTokenOut
+        );
+
+        // Wrap ETH for WETH
+        IWETH(_WETH).deposit{value: amountETHBalanced}();
+
+        // Swap for tokens
+        uint[] memory amountsToken = _swapForTokens(
+            token,
+            address(this).balance,
+            amountTokenBalanced
+        );
+
+        // Amounts need to be rebalanced because the reserves are changed from the swap
+        (amountETHBalanced, amountTokenBalanced) = _getBalancedAmountsForUniswapV2(
+            _WETH,
+            token,
+            amountETHBalanced,
+            amountsToken[1]
+        );
+
+        require(amountETHBalanced <= _MAX_UINT112, "DALPManager/overflow");
+        uint112 amountETHDesired = uint112(amountETHBalanced);
+
+        require(amountTokenBalanced <= _MAX_UINT112, "DALPManager/overflow");
+        uint112 amountTokenDesired = uint112(amountTokenBalanced);
+
+        return (amountETHDesired, amountTokenDesired);
+    }
+
+    /**
      * @notice Get the amount of tokens the DALP can afford to add to a Uniswap v2 pair
      * @dev It was necessary to refactor this code out of `_addUniswapV2Liquidity` to avoid a
      *      "Stack too deep" error.
      * @param tokenA First token in the Uniswap pair
      * @param tokenB Second token in the Uniswap pair
      * @return The desired amount of token A and token B
-     * TODO: Handle ETH pairs
      */
-    function _getAmountDesiredUniswapV2(address tokenA, address tokenB)
+    function _getAmountDesiredForTokenPairUniswapV2(address tokenA, address tokenB)
         internal
         returns (uint112, uint112)
     {
@@ -164,19 +241,24 @@ contract DALPManager is Ownable {
         );
 
         // Get the balanced amounts for the target pair that is less than the maximum swap amount
-        uint amountBEquiv = _getEquivalentAmountForUniswapV2(tokenA, tokenB, amountAOut);
-        if (amountBEquiv > amountBOut) {
-            amountBEquiv = amountBOut;
-        }
-        uint amountAEquiv = _getEquivalentAmountForUniswapV2(tokenB, tokenA, amountBEquiv);
+        (uint amountABalanced, uint amountBBalanced) = _getBalancedAmountsForUniswapV2(
+            tokenA,
+            tokenB,
+            amountAOut,
+            amountBOut
+        );
 
         // Swap for token A
-        uint[] memory amountsA = _swapForTokens(tokenA, address(this).balance / 2, amountAEquiv);
+        uint[] memory amountsA = _swapForTokens(
+            tokenA,
+            address(this).balance / 2,
+            amountABalanced
+        );
         require(amountsA[1] <= _MAX_UINT112, "DALPManager/overflow");
         uint112 amountADesired = uint112(amountsA[1]);
 
         // Swap for token B
-        uint[] memory amountsB = _swapForTokens(tokenB, address(this).balance, amountBEquiv);
+        uint[] memory amountsB = _swapForTokens(tokenB, address(this).balance, amountBBalanced);
         require(amountsB[1] <= _MAX_UINT112, "DALPManager/overflow");
         uint112 amountBDesired = uint112(amountsB[1]);
 
@@ -209,6 +291,25 @@ contract DALPManager is Ownable {
     //----------------------------------------
     // Internal views
     //----------------------------------------
+
+    function _getBalancedAmountsForUniswapV2(
+        address tokenA,
+        address tokenB,
+        uint amountA,
+        uint amountB
+    )
+        internal
+        view
+        returns (uint, uint)
+    {
+        uint amountBBalanced = _getEquivalentAmountForUniswapV2(tokenA, tokenB, amountA);
+        if (amountBBalanced > amountB) {
+            amountBBalanced = amountB;
+        }
+        uint amountABalanced = _getEquivalentAmountForUniswapV2(tokenB, tokenA, amountBBalanced);
+
+        return (amountABalanced, amountBBalanced);
+    }
 
     /**
      * @notice Get the amount of token B that is equivalent to the given amount of token A
