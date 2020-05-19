@@ -303,9 +303,13 @@ contract DALPManager is Ownable {
         returns (uint, uint)
     {
         uint amountBBalanced = _getEquivalentAmountForUniswapV2(tokenA, tokenB, amountA);
+
         if (amountBBalanced > amountB) {
             amountBBalanced = amountB;
+        } else if (amountBBalanced == 0) {
+            return (amountA, amountB);
         }
+
         uint amountABalanced = _getEquivalentAmountForUniswapV2(tokenB, tokenA, amountBBalanced);
 
         return (amountABalanced, amountBBalanced);
@@ -316,7 +320,7 @@ contract DALPManager is Ownable {
      * @param tokenA The address of token A
      * @param tokenB The address of token B
      * @param amountA The amount of token A
-     * @return The equivalent amount of token B
+     * @return The equivalent amount of token B, returns 0 if the token pair has no reserves
      */
     function _getEquivalentAmountForUniswapV2(address tokenA, address tokenB, uint amountA)
         internal
@@ -328,6 +332,10 @@ contract DALPManager is Ownable {
             tokenA,
             tokenB
         );
+
+        if (reserveA == 0 && reserveB == 0) {
+            return 0;
+        }
 
         return _uniswapRouter.quote(amountA, reserveA, reserveB);
     }
