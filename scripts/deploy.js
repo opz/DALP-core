@@ -9,6 +9,10 @@ function displayContractInfo(contract, contractName) {
 }
 
 async function main() {
+  if (!Object.keys(config.networks).includes(network)) {
+    throw new Error("Not using a supported network for deployment");
+  }
+
   const DALP = await ethers.getContractFactory("DALP");
   const dalp = await DALP.deploy();
 
