@@ -29,8 +29,9 @@ npm link dalp-core
 You can now import the smart contract artifacts in your project:
 ```
 import DALPManager from "dalp-core/artifacts/DALPManager.json";
+import { DALPManagerAddress } from "dalp-core/artifacts/kovan.json";
 
-const manager = new web3.eth.Contract(DALPManager.abi);
+const dalpManager = new web3.eth.Contract(DALPManager.abi, DALPManagerAddress);
 ```
 
 ## Contributors
