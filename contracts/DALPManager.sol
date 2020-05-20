@@ -3,7 +3,6 @@ pragma solidity ^0.6.6;
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
-// import {SafeMath} from "@openzeppelin/contracts/math/SafeMath.sol";
 
 import {FixedPoint} from "@uniswap/lib/contracts/libraries/FixedPoint.sol";
 import {UniswapV2Library} from "@uniswap/v2-periphery/contracts/libraries/UniswapV2Library.sol";
@@ -13,11 +12,14 @@ import {DALP} from "./DALP.sol";
 import {OracleManager} from "./OracleManager.sol";
 import {IUniswapV2Pair} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
 
+import {SafeMath} from "@openzeppelin/contracts/math/SafeMath.sol";
+
 contract DALPManager is Ownable {
     //----------------------------------------
     // Type definitions
     //----------------------------------------
 
+    using SafeMath for uint256;
     using FixedPoint for *;
     using SafeERC20 for IERC20;
     // using SafeMath for uint256;
@@ -32,8 +34,16 @@ contract DALPManager is Ownable {
     // Limit slippage to 0.5%
     uint112 private constant UNISWAP_V2_SLIPPAGE_LIMIT = 200;
 
-    // Liquidity provision address
+    // token DALP is currently provisioning liquidity for
+    // the WETH<=>activeTokenPair is current Uniswap pair
+    // ex: DAI address
+    address private activeTokenPair;
+
+    // address of uniswap pair pool
     address private uniswapPair;
+
+    // uniswap factory
+    address factory;
 
     //----------------------------------------
     // State variables
@@ -62,10 +72,11 @@ contract DALPManager is Ownable {
     // Constructor
     //----------------------------------------
 
-    constructor(IUniswapV2Router01 _uniswapRouter, OracleManager _oracle) public {
+    constructor(IUniswapV2Router01 _uniswapRouter, OracleManager _oracle, address _factory) public {
         uniswapRouter = _uniswapRouter;
         WETH = _uniswapRouter.WETH();
         oracle = _oracle;
+        factory = _factory;
     }
 
     //----------------------------------------
@@ -79,8 +90,7 @@ contract DALPManager is Ownable {
 
     function mint() public payable {
         require(msg.value > 0, "Must send ETH");
-        // oracle.update();
-        uint mintAmount = calculateMintAmount();
+        uint mintAmount = _calculateMintAmount(msg.value);
         dalp.mint(msg.sender, mintAmount);
     }
 
@@ -107,26 +117,21 @@ contract DALPManager is Ownable {
         (reserve0, reserve1, ) = IUniswapV2Pair(uniswapPair).getReserves();
     }
 
-    function getDalpProportionalReserves() public view returns(uint112 reserve0Share, uint112 reserve1Share){
-        uint totalLiquidityTokens = getUniswapPoolTokenSupply();
-        uint contractLiquidityTokens = getUniswapPoolTokenHoldings();
+    function getDalpProportionalReserves() public view returns(uint reserve0Share, uint reserve1Share){
+        uint256 totalLiquidityTokens = getUniswapPoolTokenSupply();
+        uint256 contractLiquidityTokens = getUniswapPoolTokenHoldings();
         (uint112 reserve0, uint112 reserve1) = getUniswapPoolReserves();
 
-        // does this casting work?
-        uint256 reserve0Casted = uint256(reserve0);
-        uint256 reserve1Casted = uint256(reserve1);
+        require(totalLiquidityTokens < MAX_UINT112, "UINT112 overflow");
+        require(contractLiquidityTokens < MAX_UINT112, "UINT112 overflow");
+
+        uint112 totalLiquidityTokensCasted = uint112(totalLiquidityTokens); // much lower
+        uint112 contractLiquidityTokensCasted = uint112(contractLiquidityTokens); // much higher
 
         // underlying liquidity of contract's pool tokens
         // returns underlying reserves holding of this contract for each asset
-
-        reserve0Share = reserve0Casted * (contractLiquidityTokens) / (totalLiquidityTokens);
-        // reserve0Share = reserve0 * (contractLiquidityTokens) / (totalLiquidityTokens);
-        // reserve0Share = reserve0.mul(contractLiquidityTokens).div(totalLiquidityTokens);
-        // reserve0Share = reserve0Casted.mul(contractLiquidityTokens).div(totalLiquidityTokens);
-        reserve1Share = reserve1Casted * (contractLiquidityTokens) / (totalLiquidityTokens);
-        // reserve1Share = reserve1 * (contractLiquidityTokens) / (totalLiquidityTokens);
-        // reserve1Share = reserve1.mul(contractLiquidityTokens).div(totalLiquidityTokens);
-        // reserve1Share = reserve1Casted.mul(contractLiquidityTokens).div(totalLiquidityTokens);
+        reserve0Share = FixedPoint.encode(reserve0).div(contractLiquidityTokensCasted).mul(totalLiquidityTokens).decode144();
+        reserve1Share = FixedPoint.encode(reserve1).div(contractLiquidityTokensCasted).mul(totalLiquidityTokens).decode144();
     }
 
 
@@ -214,10 +219,21 @@ contract DALPManager is Ownable {
     // Internal views
     //----------------------------------------
 
-    function calculateMintAmount() internal view returns (uint) {
+    function _calculateMintAmount(uint ethValue) private returns (uint mintAmount) {
         (uint reserve0Share, uint reserve1Share) = getDalpProportionalReserves();
-        // calculate value on WETH pair for each reserve share
+        IUniswapV2Pair pair = getUniswapPair(activeTokenPair);
 
+        address token0 = pair.token0();
+        address token1 = pair.token1();
+        oracle.update(token0);
+        oracle.update(token1);
+
+        uint valueToken0 = oracle.consult(token0, reserve0Share);
+        uint valueToken1 = oracle.consult(token1, reserve1Share);
+
+        uint decimals = dalp.decimals();
+        uint pricePerToken = (valueToken0.add(valueToken1)).mul(decimals).div(dalp.totalSupply());
+        mintAmount = ethValue.mul(decimals).div(pricePerToken);
     }
 
     /**
@@ -242,12 +258,17 @@ contract DALPManager is Ownable {
     }
 
     //----------------------------------------
-    // Address setters
+    // Utils
     //----------------------------------------
 
-    // function setUniswapPair(address _uniswapPair) public onlyOwner {
-    //     uniswapPair = _uniswapPair; //
-    // }
+    // For v1 of DALP, DALPManager only contributes liquidity to WETH pairs
+    function setActiveTokenPair(address _token1) public onlyOwner {
+        activeTokenPair = _token1; //
+    }
+
+    function setUniswapPair(address _uniswapPair) public onlyOwner {
+        uniswapPair = _uniswapPair;
+    }
 
     // need to know which liquidity network
     // need to know which liquidity pair
@@ -255,4 +276,8 @@ contract DALPManager is Ownable {
     // function addLiquidityPool(){
         
     // }
+
+    function getUniswapPair(address token) public view returns(IUniswapV2Pair pair){
+        pair = IUniswapV2Pair(UniswapV2Library.pairFor(factory, WETH, token));
+    }
 }

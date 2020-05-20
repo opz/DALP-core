@@ -95,10 +95,8 @@ contract OracleManager {
     // note this will always return 0 before update has been called successfully for the first time.
     // address token must be non-weth token
     function consult(address token, uint amountIn) external view oraclePairExists(token) returns (uint amountOut) {
-        require(token != weth, "Must be non-WETH token in pair");
-        // require(oraclePairs[token], "Oracle token pair must exist");
+        if(token == weth) return amountIn;
 
-        IUniswapV2Pair pair = getUniswapPair(token);
         OraclePairState memory oraclePair = oraclePairs[token];
 
         amountOut = oraclePair.price1Average.mul(amountIn).decode144();
