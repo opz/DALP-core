@@ -15,25 +15,32 @@ async function main() {
     throw new Error("Not using a supported network for deployment");
   }
 
+  let contracts = {};
+
+  // Deploy DALP Token
   const DALPName = "DALP";
   const DALP = await ethers.getContractFactory(DALPName);
   const dalp = await DALP.deploy();
 
   await dalp.deployed();
 
-  fs.writeFileSync(`artifacts/${DALPName}.address`, dalp.address);
+  contracts[`${DALPName}Address`] = dalp.address;
 
   displayContractInfo(dalp, "DALP Token");
 
+  // Deploy DALP Manager
   const DALPManagerName = "DALPManager";
   const DALPManager = await ethers.getContractFactory(DALPManagerName);
   const dalpManager = await DALPManager.deploy("0xf164fC0Ec4E93095b804a4795bBe1e041497b92a");
 
   await dalpManager.deployed();
 
-  fs.writeFileSync(`artifacts/${DALPManagerName}.address`, dalpManager.address);
+  contracts[`${DALPManagerName}Address`] = dalpManager.address;
 
   displayContractInfo(dalp, "DALP Manager");
+
+  // Write contract addresses to a network config file
+  fs.writeFileSync(`artifacts/${network.name}.json`, JSON.stringify(contracts, null, 2));
 }
 
 main()
