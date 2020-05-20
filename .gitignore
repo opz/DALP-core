@@ -3,7 +3,8 @@ node_modules/
 
 # Buidler files
 cache/
-artifacts/
+artifacts/*
+!artifacts/*.address
 
 # Solidity coverage files
 coverage/
