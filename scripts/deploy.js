@@ -15,6 +15,15 @@ async function main() {
     throw new Error("Not using a supported network for deployment");
   }
 
+  const OracleName = "OracleManager";
+  const OracleManager = await ethers.getContractFactory(OracleName);
+  const oracleManager = await OracleManager.deploy();
+
+  await oracleManager.deployed();
+  contracts[`${OracleName}Address`] = oracleManager.address;
+
+  displayContractInfo(oracleManager, "Oracle Manager");
+
   let contracts = {};
 
   // Deploy DALP Token
@@ -31,7 +40,10 @@ async function main() {
   // Deploy DALP Manager
   const DALPManagerName = "DALPManager";
   const DALPManager = await ethers.getContractFactory(DALPManagerName);
-  const dalpManager = await DALPManager.deploy("0xf164fC0Ec4E93095b804a4795bBe1e041497b92a");
+  const dalpManager = await DALPManager.deploy(
+    "0xf164fC0Ec4E93095b804a4795bBe1e041497b92a",
+    oracleManager.address
+  );
 
   await dalpManager.deployed();
 

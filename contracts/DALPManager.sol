@@ -143,8 +143,8 @@ contract DALPManager is Ownable, ReentrancyGuard {
         uint256 contractLiquidityTokens = getUniswapPoolTokenHoldings();
         (uint112 reserve0, uint112 reserve1) = getUniswapPoolReserves();
 
-        require(totalLiquidityTokens < MAX_UINT112, "UINT112 overflow");
-        require(contractLiquidityTokens < MAX_UINT112, "UINT112 overflow");
+        require(totalLiquidityTokens < _MAX_UINT112, "UINT112 overflow");
+        require(contractLiquidityTokens < _MAX_UINT112, "UINT112 overflow");
 
         uint112 contractLiquidityTokensCasted = uint112(contractLiquidityTokens); // much higher
 
@@ -500,9 +500,4 @@ contract DALPManager is Ownable, ReentrancyGuard {
         uint pricePerToken = (valueToken0.add(valueToken1)).mul(decimals).div(dalp.totalSupply());
         mintAmount = ethValue.mul(decimals).div(pricePerToken);
     }
-
-    //----------------------------------------
-    // Utils
-    //----------------------------------------
-
 }
