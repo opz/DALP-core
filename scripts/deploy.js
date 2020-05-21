@@ -15,16 +15,19 @@ async function main() {
     throw new Error("Not using a supported network for deployment");
   }
 
+  let contracts = {};
+
   const OracleName = "OracleManager";
   const OracleManager = await ethers.getContractFactory(OracleName);
-  const oracleManager = await OracleManager.deploy();
+  const oracleManager = await OracleManager.deploy(
+    "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f",
+    "0xd0A1E359811322d97991E03f863a0C30C2cF029C"
+  );
 
   await oracleManager.deployed();
   contracts[`${OracleName}Address`] = oracleManager.address;
 
   displayContractInfo(oracleManager, "Oracle Manager");
-
-  let contracts = {};
 
   // Deploy DALP Token
   const DALPName = "DALP";
