@@ -1,3 +1,5 @@
+const fs = require("fs");
+
 function displayContractInfo(contract, contractName) {
   console.log(`
     ${contractName} deployed
@@ -9,25 +11,35 @@ function displayContractInfo(contract, contractName) {
 }
 
 async function main() {
-  if (!Object.keys(config.networks).includes(network)) {
+  if (!Object.keys(config.networks).includes(network.name)) {
     throw new Error("Not using a supported network for deployment");
   }
 
-  const OracleManager = await ethers.getContractFactory("OracleManager");
+  const OracleName = "OracleManager";
+  const OracleManager = await ethers.getContractFactory(OracleName);
   const oracleManager = await OracleManager.deploy();
 
   await oracleManager.deployed();
+  contracts[`${OracleName}Address`] = oracleManager.address;
 
   displayContractInfo(oracleManager, "Oracle Manager");
 
-  const DALP = await ethers.getContractFactory("DALP");
+  let contracts = {};
+
+  // Deploy DALP Token
+  const DALPName = "DALP";
+  const DALP = await ethers.getContractFactory(DALPName);
   const dalp = await DALP.deploy();
 
   await dalp.deployed();
 
+  contracts[`${DALPName}Address`] = dalp.address;
+
   displayContractInfo(dalp, "DALP Token");
 
-  const DALPManager = await ethers.getContractFactory("DALPManager");
+  // Deploy DALP Manager
+  const DALPManagerName = "DALPManager";
+  const DALPManager = await ethers.getContractFactory(DALPManagerName);
   const dalpManager = await DALPManager.deploy(
     "0xf164fC0Ec4E93095b804a4795bBe1e041497b92a",
     oracleManager.address
@@ -35,7 +47,15 @@ async function main() {
 
   await dalpManager.deployed();
 
+  contracts[`${DALPManagerName}Address`] = dalpManager.address;
+
+  await dalp.setManagerContractAddress(dalpManager.address);
+  await dalpManager.setTokenContract(dalp.address);
+
   displayContractInfo(dalp, "DALP Manager");
+
+  // Write contract addresses to a network config file
+  fs.writeFileSync(`artifacts/${network.name}.json`, JSON.stringify(contracts, null, 2));
 }
 
 main()

@@ -48,8 +48,8 @@ contract DALPManager is Ownable {
     //----------------------------------------
 
     DALP public dalp; // DALP token
-    IUniswapV2Router01 private immutable uniswapRouter;
-    address private immutable WETH;
+    IUniswapV2Router01 private immutable _uniswapRouter;
+    address private immutable _WETH;
     OracleManager private oracle;
 
     //----------------------------------------
@@ -71,8 +71,8 @@ contract DALPManager is Ownable {
     //----------------------------------------
 
     constructor(IUniswapV2Router01 _uniswapRouter, OracleManager _oracle) public {
-        uniswapRouter = _uniswapRouter;
-        WETH = _uniswapRouter.WETH();
+        _uniswapRouter = _uniswapRouter;
+        _WETH = _uniswapRouter.WETH();
         oracle = _oracle;
     }
 
@@ -126,8 +126,8 @@ contract DALPManager is Ownable {
         uint256 contractLiquidityTokens = getUniswapPoolTokenHoldings();
         (uint112 reserve0, uint112 reserve1) = getUniswapPoolReserves();
 
-        require(totalLiquidityTokens < MAX_UINT112, "UINT112 overflow");
-        require(contractLiquidityTokens < MAX_UINT112, "UINT112 overflow");
+        require(totalLiquidityTokens < _MAX_UINT112, "UINT112 overflow");
+        require(contractLiquidityTokens < _MAX_UINT112, "UINT112 overflow");
 
         uint112 totalLiquidityTokensCasted = uint112(totalLiquidityTokens); // much lower
         uint112 contractLiquidityTokensCasted = uint112(contractLiquidityTokens); // much higher
@@ -494,6 +494,6 @@ contract DALPManager is Ownable {
     }
 
     function getUniswapPair(address token) public view returns(IUniswapV2Pair pair){
-        pair = IUniswapV2Pair(UniswapV2Library.pairFor(_uniswapRouter.factory(), WETH, token));
+        pair = IUniswapV2Pair(UniswapV2Library.pairFor(_uniswapRouter.factory(), _WETH, token));
     }
 }
