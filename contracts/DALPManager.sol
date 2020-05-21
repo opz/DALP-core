@@ -505,7 +505,14 @@ contract DALPManager is Ownable, ReentrancyGuard {
         uint valueToken1 = _oracle.consult(token1, reserve1Share);
 
         uint decimals = dalp.decimals();
-        uint pricePerToken = (valueToken0.add(valueToken1)).mul(decimals).div(dalp.totalSupply());
+        uint pricePerToken = (
+            valueToken0
+                .add(valueToken1)
+                .add(address(this).balance)
+            )
+            .mul(decimals)
+            .div(dalp.totalSupply());
+
         mintAmount = ethValue.mul(decimals).div(pricePerToken);
     }
 }
