@@ -38,10 +38,10 @@ contract DALPManager is Ownable, ReentrancyGuard {
     // token DALP is currently provisioning liquidity for
     // the WETH<=>activeTokenPair is current Uniswap pair
     // ex: DAI address
-    address private activeTokenPair;
+    address private _activeTokenPair;
 
     // address of uniswap pair pool
-    address private uniswapPair;
+    address private _uniswapPair;
 
 
     //----------------------------------------
@@ -49,9 +49,9 @@ contract DALPManager is Ownable, ReentrancyGuard {
     //----------------------------------------
 
     DALP public dalp; // DALP token
-    IUniswapV2Router01 private immutable uniswapRouter;
-    address private immutable WETH;
-    OracleManager private oracle;
+    IUniswapV2Router01 private immutable _uniswapRouter;
+    address private immutable _WETH; // solhint-disable-line var-name-mixedcase
+    OracleManager private _oracle;
 
     //----------------------------------------
     // Events
@@ -71,10 +71,10 @@ contract DALPManager is Ownable, ReentrancyGuard {
     // Constructor
     //----------------------------------------
 
-    constructor(IUniswapV2Router01 _uniswapRouter, OracleManager _oracle) public {
-        uniswapRouter = _uniswapRouter;
-        WETH = _uniswapRouter.WETH();
-        oracle = _oracle;
+    constructor(IUniswapV2Router01 uniswapRouter, OracleManager oracle) public {
+        _uniswapRouter = uniswapRouter;
+        _WETH = uniswapRouter.WETH();
+        _oracle = oracle;
     }
 
     //----------------------------------------
@@ -91,6 +91,14 @@ contract DALPManager is Ownable, ReentrancyGuard {
     // called by admin on deployment
     function setTokenContract(address _tokenAddress) public onlyOwner {
         dalp = DALP(_tokenAddress);
+    }
+
+    function setActiveTokenPair(address _token1) public onlyOwner {
+        activeTokenPair = _token1; //
+    }
+
+    function setUniswapPair(address _uniswapPair) public onlyOwner {
+        uniswapPair = _uniswapPair;
     }
 
     function mint() public payable nonReentrant {
@@ -110,19 +118,27 @@ contract DALPManager is Ownable, ReentrancyGuard {
     // Public views
     //----------------------------------------
 
-    function getUniswapPoolTokenHoldings() public view returns(uint){
+    function getUniswapPoolTokenHoldings() public view returns (uint) {
         return IERC20(uniswapPair).balanceOf(address(this));
     }
 
-    function getUniswapPoolTokenSupply() public view returns(uint){
+    function getUniswapPoolTokenSupply() public view returns (uint) {
         return IERC20(uniswapPair).totalSupply();
     }
 
-    function getUniswapPoolReserves() public view returns(uint112 reserve0, uint112 reserve1){
+    function getUniswapPoolReserves() public view returns (uint112 reserve0, uint112 reserve1) {
         (reserve0, reserve1, ) = IUniswapV2Pair(uniswapPair).getReserves();
     }
 
-    function getDalpProportionalReserves() public view returns(uint reserve0Share, uint reserve1Share){
+    function getUniswapPair(address token) public view returns(IUniswapV2Pair pair){
+        pair = IUniswapV2Pair(UniswapV2Library.pairFor(_uniswapRouter.factory(), WETH, token));
+    }
+
+    function getDalpProportionalReserves()
+        public
+        view
+        returns (uint reserve0Share, uint reserve1Share)
+    {
         uint256 totalLiquidityTokens = getUniswapPoolTokenSupply();
         uint256 contractLiquidityTokens = getUniswapPoolTokenHoldings();
         (uint112 reserve0, uint112 reserve1) = getUniswapPoolReserves();
@@ -130,7 +146,6 @@ contract DALPManager is Ownable, ReentrancyGuard {
         require(totalLiquidityTokens < MAX_UINT112, "UINT112 overflow");
         require(contractLiquidityTokens < MAX_UINT112, "UINT112 overflow");
 
-        uint112 totalLiquidityTokensCasted = uint112(totalLiquidityTokens); // much lower
         uint112 contractLiquidityTokensCasted = uint112(contractLiquidityTokens); // much higher
 
         // underlying liquidity of contract's pool tokens
@@ -388,23 +403,6 @@ contract DALPManager is Ownable, ReentrancyGuard {
     // Internal views
     //----------------------------------------
 
-    function _calculateMintAmount(uint ethValue) private returns (uint mintAmount) {
-        (uint reserve0Share, uint reserve1Share) = getDalpProportionalReserves();
-        IUniswapV2Pair pair = getUniswapPair(activeTokenPair);
-
-        address token0 = pair.token0();
-        address token1 = pair.token1();
-        oracle.update(token0);
-        oracle.update(token1);
-
-        uint valueToken0 = oracle.consult(token0, reserve0Share);
-        uint valueToken1 = oracle.consult(token1, reserve1Share);
-
-        uint decimals = dalp.decimals();
-        uint pricePerToken = (valueToken0.add(valueToken1)).mul(decimals).div(dalp.totalSupply());
-        mintAmount = ethValue.mul(decimals).div(pricePerToken);
-    }
-
     /**
      * @notice Get balanced token amounts for adding liquidity to a Uniswap v2 pair
      * @param tokenA The address of token A
@@ -483,18 +481,28 @@ contract DALPManager is Ownable, ReentrancyGuard {
     }
 
     //----------------------------------------
+    // Private views
+    //----------------------------------------
+
+    function _calculateMintAmount(uint ethValue) private returns (uint mintAmount) {
+        (uint reserve0Share, uint reserve1Share) = getDalpProportionalReserves();
+        IUniswapV2Pair pair = getUniswapPair(activeTokenPair);
+
+        address token0 = pair.token0();
+        address token1 = pair.token1();
+        _oracle.update(token0);
+        _oracle.update(token1);
+
+        uint valueToken0 = _oracle.consult(token0, reserve0Share);
+        uint valueToken1 = _oracle.consult(token1, reserve1Share);
+
+        uint decimals = dalp.decimals();
+        uint pricePerToken = (valueToken0.add(valueToken1)).mul(decimals).div(dalp.totalSupply());
+        mintAmount = ethValue.mul(decimals).div(pricePerToken);
+    }
+
+    //----------------------------------------
     // Utils
     //----------------------------------------
 
-    function setActiveTokenPair(address _token1) public onlyOwner {
-        activeTokenPair = _token1; //
-    }
-
-    function setUniswapPair(address _uniswapPair) public onlyOwner {
-        uniswapPair = _uniswapPair;
-    }
-
-    function getUniswapPair(address token) public view returns(IUniswapV2Pair pair){
-        pair = IUniswapV2Pair(UniswapV2Library.pairFor(_uniswapRouter.factory(), WETH, token));
-    }
 }

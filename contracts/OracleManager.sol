@@ -11,8 +11,8 @@ contract OracleManager {
 
     uint public constant PERIOD = 1 hours;
 
-    address private factory;
-    address private weth;
+    address private _factory;
+    address private _weth;
 
     struct OraclePairState {
         IUniswapV2Pair pair;
@@ -25,7 +25,7 @@ contract OracleManager {
         FixedPoint.uq112x112 price1Average;
     }
 
-    mapping(address => OraclePairState) oraclePairs;
+    mapping(address => OraclePairState) public oraclePairs;
 
     // mapping where you can insert both assets in either order
     // to pull correct oracleState struct
@@ -41,27 +41,9 @@ contract OracleManager {
 
     // when user mints, manager contract needs to know which token pair is active
 
-    constructor(address _factory, address _weth) public {
-        factory = _factory;
-        weth = _weth;
-    }
-
-    // add oracle pair: weth<=>token
-    function addPair(address token) public {
-        require(oraclePairs[token].blockTimestampLast == 0, "Pair already exists");
-        IUniswapV2Pair pair = getUniswapPair(token);
-        (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast) = pair.getReserves();
-        require(reserve0 != 0 && reserve1 != 0, 'Oracle Manager: NO_RESERVES');
-
-        OraclePairState storage oraclePair;
-        oraclePair.pair = pair;
-        oraclePair.token0 = pair.token0();
-        oraclePair.token1 = pair.token1();
-        oraclePair.price0CumulativeLast = pair.price0CumulativeLast();
-        oraclePair.price1CumulativeLast = pair.price1CumulativeLast();
-        oraclePair.blockTimestampLast = blockTimestampLast;
-
-        oraclePairs[token] = oraclePair;
+    constructor(address factory, address weth) public {
+        _factory = factory;
+        _weth = weth;
     }
 
     modifier oraclePairExists(address token) {
@@ -95,14 +77,32 @@ contract OracleManager {
     // note this will always return 0 before update has been called successfully for the first time.
     // address token must be non-weth token
     function consult(address token, uint amountIn) external view oraclePairExists(token) returns (uint amountOut) {
-        if(token == weth) return amountIn;
+        if(token == _weth) return amountIn;
 
         OraclePairState memory oraclePair = oraclePairs[token];
 
         amountOut = oraclePair.price1Average.mul(amountIn).decode144();
     }
 
+    // add oracle pair: weth<=>token
+    function addPair(address token) public {
+        require(oraclePairs[token].blockTimestampLast == 0, "Pair already exists");
+        IUniswapV2Pair pair = getUniswapPair(token);
+        (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast) = pair.getReserves();
+        require(reserve0 != 0 && reserve1 != 0, "Oracle Manager: NO_RESERVES");
+
+        OraclePairState storage oraclePair;
+        oraclePair.pair = pair;
+        oraclePair.token0 = pair.token0();
+        oraclePair.token1 = pair.token1();
+        oraclePair.price0CumulativeLast = pair.price0CumulativeLast();
+        oraclePair.price1CumulativeLast = pair.price1CumulativeLast();
+        oraclePair.blockTimestampLast = blockTimestampLast;
+
+        oraclePairs[token] = oraclePair;
+    }
+
     function getUniswapPair(address token) public view returns(IUniswapV2Pair pair){
-        pair = IUniswapV2Pair(UniswapV2Library.pairFor(factory, weth, token));
+        pair = IUniswapV2Pair(UniswapV2Library.pairFor(_factory, _weth, token));
     }
 }
