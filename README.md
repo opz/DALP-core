@@ -21,6 +21,8 @@ To use DALP smart contracts in a project, follow these steps:
 ```
 git clone git@github.com:opz/DALP-core.git
 cd DALP-core
+npm install
+npx buidler compile
 npm link
 cd <project_directory>
 npm link dalp-core
