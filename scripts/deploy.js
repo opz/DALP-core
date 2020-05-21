@@ -37,6 +37,9 @@ async function main() {
 
   contracts[`${DALPManagerName}Address`] = dalpManager.address;
 
+  await dalp.setManagerContractAddress(dalpManager.address);
+  await dalpManager.setTokenContract(dalp.address);
+
   displayContractInfo(dalp, "DALP Manager");
 
   // Write contract addresses to a network config file
