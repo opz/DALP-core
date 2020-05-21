@@ -23,7 +23,6 @@ contract DALPManager is Ownable {
     using SafeMath for uint256;
     using FixedPoint for *;
     using SafeERC20 for IERC20;
-    // using SafeMath for uint256;
 
     //----------------------------------------
     // State variables
