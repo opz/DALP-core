@@ -89,16 +89,16 @@ contract DALPManager is Ownable, ReentrancyGuard {
     //----------------------------------------
 
     // called by admin on deployment
-    function setTokenContract(address _tokenAddress) public onlyOwner {
-        dalp = DALP(_tokenAddress);
+    function setTokenContract(address tokenAddress) public onlyOwner {
+        dalp = DALP(tokenAddress);
     }
 
-    function setActiveTokenPair(address _token1) public onlyOwner {
-        activeTokenPair = _token1; //
+    function setActiveTokenPair(address token1) public onlyOwner {
+        _activeTokenPair = token1;
     }
 
-    function setUniswapPair(address _uniswapPair) public onlyOwner {
-        uniswapPair = _uniswapPair;
+    function setUniswapPair(address uniswapPair) public onlyOwner {
+        _uniswapPair = uniswapPair;
     }
 
     function mint() public payable nonReentrant {
@@ -119,19 +119,19 @@ contract DALPManager is Ownable, ReentrancyGuard {
     //----------------------------------------
 
     function getUniswapPoolTokenHoldings() public view returns (uint) {
-        return IERC20(uniswapPair).balanceOf(address(this));
+        return IERC20(_uniswapPair).balanceOf(address(this));
     }
 
     function getUniswapPoolTokenSupply() public view returns (uint) {
-        return IERC20(uniswapPair).totalSupply();
+        return IERC20(_uniswapPair).totalSupply();
     }
 
     function getUniswapPoolReserves() public view returns (uint112 reserve0, uint112 reserve1) {
-        (reserve0, reserve1, ) = IUniswapV2Pair(uniswapPair).getReserves();
+        (reserve0, reserve1, ) = IUniswapV2Pair(_uniswapPair).getReserves();
     }
 
     function getUniswapPair(address token) public view returns(IUniswapV2Pair pair){
-        pair = IUniswapV2Pair(UniswapV2Library.pairFor(_uniswapRouter.factory(), WETH, token));
+        pair = IUniswapV2Pair(UniswapV2Library.pairFor(_uniswapRouter.factory(), _WETH, token));
     }
 
     function getDalpProportionalReserves()
@@ -486,7 +486,7 @@ contract DALPManager is Ownable, ReentrancyGuard {
 
     function _calculateMintAmount(uint ethValue) private returns (uint mintAmount) {
         (uint reserve0Share, uint reserve1Share) = getDalpProportionalReserves();
-        IUniswapV2Pair pair = getUniswapPair(activeTokenPair);
+        IUniswapV2Pair pair = getUniswapPair(_activeTokenPair);
 
         address token0 = pair.token0();
         address token1 = pair.token1();

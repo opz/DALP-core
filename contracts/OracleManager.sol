@@ -25,7 +25,7 @@ contract OracleManager {
         FixedPoint.uq112x112 price1Average;
     }
 
-    mapping(address => OraclePairState) public oraclePairs;
+    mapping(address => OraclePairState) private _oraclePairs;
 
     // mapping where you can insert both assets in either order
     // to pull correct oracleState struct
@@ -47,7 +47,7 @@ contract OracleManager {
     }
 
     modifier oraclePairExists(address token) {
-        require(oraclePairs[token].token1 == token, "Oracle token pair must exist");
+        require(_oraclePairs[token].token1 == token, "Oracle token pair must exist");
         _;
     }
 
@@ -57,7 +57,7 @@ contract OracleManager {
         (uint32 blockTimestamp, uint price0Cumulative, uint price1Cumulative) =
             UniswapV2OracleLibrary.currentCumulativePrices(address(pair));
 
-        OraclePairState storage oraclePair = oraclePairs[token];    
+        OraclePairState storage oraclePair = _oraclePairs[token];    
         uint32 timeElapsed = blockTimestamp - oraclePair.blockTimestampLast; // overflow is desired
 
         // ensure that at least one full period has passed since the last update
@@ -79,14 +79,14 @@ contract OracleManager {
     function consult(address token, uint amountIn) external view oraclePairExists(token) returns (uint amountOut) {
         if(token == _weth) return amountIn;
 
-        OraclePairState memory oraclePair = oraclePairs[token];
+        OraclePairState memory oraclePair = _oraclePairs[token];
 
         amountOut = oraclePair.price1Average.mul(amountIn).decode144();
     }
 
     // add oracle pair: weth<=>token
     function addPair(address token) public {
-        require(oraclePairs[token].blockTimestampLast == 0, "Pair already exists");
+        require(_oraclePairs[token].blockTimestampLast == 0, "Pair already exists");
         IUniswapV2Pair pair = getUniswapPair(token);
         (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast) = pair.getReserves();
         require(reserve0 != 0 && reserve1 != 0, "Oracle Manager: NO_RESERVES");
@@ -99,7 +99,7 @@ contract OracleManager {
         oraclePair.price1CumulativeLast = pair.price1CumulativeLast();
         oraclePair.blockTimestampLast = blockTimestampLast;
 
-        oraclePairs[token] = oraclePair;
+        _oraclePairs[token] = oraclePair;
     }
 
     function getUniswapPair(address token) public view returns(IUniswapV2Pair pair){
