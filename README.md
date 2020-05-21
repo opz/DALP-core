@@ -1,6 +1,3 @@
-
-# DALP-core
-
 # DALP Smart Contracts
 
 [![Actions Status](https://github.com/opz/DALP-core/workflows/CI/badge.svg)](https://github.com/opz/DALP-core/actions)
