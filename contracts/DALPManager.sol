@@ -89,7 +89,7 @@ contract DALPManager is Ownable, ReentrancyGuard {
     // External views
     //----------------------------------------
 
-    function calculateMintAmount(uint ethValue) external nonReentrant returns (uint mintAmount) {
+    function calculateMintAmount(uint ethValue) external nonReentrant returns (uint) {
         return _calculateMintAmount(ethValue);
     }
 
