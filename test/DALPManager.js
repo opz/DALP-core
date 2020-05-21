@@ -1,10 +1,8 @@
-const { expect, use } = require("chai");
+const { expect } = require("chai");
 const { utils } = require("ethers");
 const { solidity, createFixtureLoader } = require("ethereum-waffle");
 
 const { dalpManagerFixture } = require("./fixtures.js");
-
-use(solidity);
 
 describe("DALPManager", () => {
   const provider = waffle.provider
