@@ -50,7 +50,6 @@ contract OracleManager {
         _;
     }
 
-
     function update(address token) external oraclePairExists(token) {
         IUniswapV2Pair pair = getUniswapPair(token);
         (uint32 blockTimestamp, uint price0Cumulative, uint price1Cumulative) =
