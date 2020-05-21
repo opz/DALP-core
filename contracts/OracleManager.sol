@@ -4,7 +4,6 @@ import {IUniswapV2Pair} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pa
 import {FixedPoint} from "@uniswap/lib/contracts/libraries/FixedPoint.sol";
 import {UniswapV2OracleLibrary} from "@uniswap/v2-periphery/contracts/libraries/UniswapV2OracleLibrary.sol";
 import {UniswapV2Library} from "@uniswap/v2-periphery/contracts/libraries/UniswapV2Library.sol";
-// import {UniswapV2Library} from "@uniswap/lib/contracts/libraries/UniswapV2Library.sol";
 
 contract OracleManager {
     using FixedPoint for *;
