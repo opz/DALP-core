@@ -43,22 +43,15 @@ contract DALPManager is Ownable {
     // address of uniswap pair pool
     address private uniswapPair;
 
-    // uniswap factory
-    address factory;
 
     //----------------------------------------
     // State variables
     //----------------------------------------
 
     DALP public dalp; // DALP token
-<<<<<<< HEAD
     IUniswapV2Router01 private immutable uniswapRouter;
     address private immutable WETH;
     OracleManager private oracle;
-=======
-    IUniswapV2Router01 private immutable _uniswapRouter;
-    address private immutable _WETH; // solhint-disable-line var-name-mixedcase
->>>>>>> master
 
     //----------------------------------------
     // Events
@@ -78,11 +71,10 @@ contract DALPManager is Ownable {
     // Constructor
     //----------------------------------------
 
-    constructor(IUniswapV2Router01 _uniswapRouter, OracleManager _oracle, address _factory) public {
+    constructor(IUniswapV2Router01 _uniswapRouter, OracleManager _oracle) public {
         uniswapRouter = _uniswapRouter;
         WETH = _uniswapRouter.WETH();
         oracle = _oracle;
-        factory = _factory;
     }
 
     //----------------------------------------
@@ -511,6 +503,6 @@ contract DALPManager is Ownable {
     // }
 
     function getUniswapPair(address token) public view returns(IUniswapV2Pair pair){
-        pair = IUniswapV2Pair(UniswapV2Library.pairFor(factory, WETH, token));
+        pair = IUniswapV2Pair(UniswapV2Library.pairFor(_uniswapRouter.factory(), WETH, token));
     }
 }
