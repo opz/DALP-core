@@ -88,7 +88,8 @@ async function dalpManagerFixture(provider, [wallet]) {
   const dalpManager = await deployContract(
     wallet,
     DALPManager,
-    [fixture.router.address, oracle.address]
+    [fixture.router.address, oracle.address],
+    { gasLimit: 9500000 } // Waffle default gas limit is too low
   );
 
   await dalp.setManagerContractAddress(dalpManager.address);
