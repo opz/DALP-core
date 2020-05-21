@@ -1,6 +1,7 @@
 pragma solidity ^0.6.6;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 
@@ -15,7 +16,7 @@ import {IUniswapV2Pair} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pa
 
 import {SafeMath} from "@openzeppelin/contracts/math/SafeMath.sol";
 
-contract DALPManager is Ownable {
+contract DALPManager is Ownable, ReentrancyGuard {
     //----------------------------------------
     // Type definitions
     //----------------------------------------
@@ -92,13 +93,13 @@ contract DALPManager is Ownable {
         dalp = DALP(_tokenAddress);
     }
 
-    function mint() public payable {
+    function mint() public payable nonReentrant {
         require(msg.value > 0, "Must send ETH");
         uint mintAmount = _calculateMintAmount(msg.value);
         dalp.mint(msg.sender, mintAmount);
     }
 
-    function burn(uint tokensToBurn) public {
+    function burn(uint tokensToBurn) public nonReentrant {
         require(tokensToBurn > 0, "Must burn tokens");
         require(dalp.balanceOf(msg.sender) >= tokensToBurn, "Insufficient balance");
 
