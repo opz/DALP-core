@@ -486,7 +486,6 @@ contract DALPManager is Ownable {
     // Utils
     //----------------------------------------
 
-    // For v1 of DALP, DALPManager only contributes liquidity to WETH pairs
     function setActiveTokenPair(address _token1) public onlyOwner {
         activeTokenPair = _token1; //
     }
@@ -494,13 +493,6 @@ contract DALPManager is Ownable {
     function setUniswapPair(address _uniswapPair) public onlyOwner {
         uniswapPair = _uniswapPair;
     }
-
-    // need to know which liquidity network
-    // need to know which liquidity pair
-    // need to know pair addresses
-    // function addLiquidityPool(){
-        
-    // }
 
     function getUniswapPair(address token) public view returns(IUniswapV2Pair pair){
         pair = IUniswapV2Pair(UniswapV2Library.pairFor(_uniswapRouter.factory(), WETH, token));
