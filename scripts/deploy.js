@@ -17,6 +17,18 @@ async function main() {
 
   let contracts = {};
 
+  const OracleName = "OracleManager";
+  const OracleManager = await ethers.getContractFactory(OracleName);
+  const oracleManager = await OracleManager.deploy(
+    "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f",
+    "0xd0A1E359811322d97991E03f863a0C30C2cF029C"
+  );
+
+  await oracleManager.deployed();
+  contracts[`${OracleName}Address`] = oracleManager.address;
+
+  displayContractInfo(oracleManager, "Oracle Manager");
+
   // Deploy DALP Token
   const DALPName = "DALP";
   const DALP = await ethers.getContractFactory(DALPName);
@@ -31,7 +43,10 @@ async function main() {
   // Deploy DALP Manager
   const DALPManagerName = "DALPManager";
   const DALPManager = await ethers.getContractFactory(DALPManagerName);
-  const dalpManager = await DALPManager.deploy("0xf164fC0Ec4E93095b804a4795bBe1e041497b92a");
+  const dalpManager = await DALPManager.deploy(
+    "0xf164fC0Ec4E93095b804a4795bBe1e041497b92a",
+    oracleManager.address
+  );
 
   await dalpManager.deployed();
 

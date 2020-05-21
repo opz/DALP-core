@@ -1,6 +1,7 @@
 pragma solidity ^0.6.6;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 
@@ -10,12 +11,17 @@ import {UniswapV2Library} from "@uniswap/v2-periphery/contracts/libraries/Uniswa
 import {IUniswapV2Router01} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router01.sol";
 
 import {DALP} from "./DALP.sol";
+import {OracleManager} from "./OracleManager.sol";
+import {IUniswapV2Pair} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
 
-contract DALPManager is Ownable {
+import {SafeMath} from "@openzeppelin/contracts/math/SafeMath.sol";
+
+contract DALPManager is Ownable, ReentrancyGuard {
     //----------------------------------------
     // Type definitions
     //----------------------------------------
 
+    using SafeMath for uint256;
     using FixedPoint for *;
     using SafeERC20 for IERC20;
 
@@ -29,6 +35,15 @@ contract DALPManager is Ownable {
     // Limit slippage to 0.5%
     uint112 private constant _UNISWAP_V2_SLIPPAGE_LIMIT = 200;
 
+    // token DALP is currently provisioning liquidity for
+    // the WETH<=>activeTokenPair is current Uniswap pair
+    // ex: DAI address
+    address private _activeTokenPair;
+
+    // address of uniswap pair pool
+    address private _uniswapPair;
+
+
     //----------------------------------------
     // State variables
     //----------------------------------------
@@ -36,6 +51,7 @@ contract DALPManager is Ownable {
     DALP public dalp; // DALP token
     IUniswapV2Router01 private immutable _uniswapRouter;
     address private immutable _WETH; // solhint-disable-line var-name-mixedcase
+    OracleManager private _oracle;
 
     //----------------------------------------
     // Events
@@ -55,9 +71,10 @@ contract DALPManager is Ownable {
     // Constructor
     //----------------------------------------
 
-    constructor(IUniswapV2Router01 uniswapRouter) public {
+    constructor(IUniswapV2Router01 uniswapRouter, OracleManager oracle) public {
         _uniswapRouter = uniswapRouter;
         _WETH = uniswapRouter.WETH();
+        _oracle = oracle;
     }
 
     //----------------------------------------
@@ -68,21 +85,37 @@ contract DALPManager is Ownable {
     receive() external payable {}
 
     //----------------------------------------
+    // External views
+    //----------------------------------------
+
+    function calculateMintAmount(uint ethValue) external nonReentrant returns (uint mintAmount) {
+        return _calculateMintAmount(ethValue);
+    }
+
+    //----------------------------------------
     // Public functions
     //----------------------------------------
 
     // called by admin on deployment
-    function setTokenContract(address _tokenAddress) public onlyOwner {
-        dalp = DALP(_tokenAddress);
+    function setTokenContract(address tokenAddress) public onlyOwner {
+        dalp = DALP(tokenAddress);
     }
 
-    function mint() public payable {
+    function setActiveTokenPair(address token1) public onlyOwner {
+        _activeTokenPair = token1;
+    }
+
+    function setUniswapPair(address uniswapPair) public onlyOwner {
+        _uniswapPair = uniswapPair;
+    }
+
+    function mint() public payable nonReentrant {
         require(msg.value > 0, "Must send ETH");
-        uint mintAmount = calculateMintAmount();
+        uint mintAmount = _calculateMintAmount(msg.value);
         dalp.mint(msg.sender, mintAmount);
     }
 
-    function burn(uint tokensToBurn) public {
+    function burn(uint tokensToBurn) public nonReentrant {
         require(tokensToBurn > 0, "Must burn tokens");
         require(dalp.balanceOf(msg.sender) >= tokensToBurn, "Insufficient balance");
 
@@ -93,13 +126,47 @@ contract DALPManager is Ownable {
     // Public views
     //----------------------------------------
 
-    function calculateMintAmount() public view returns (uint) {
-        return 10; // placeholder logic
+    function getUniswapPoolTokenHoldings() public view returns (uint) {
+        return IERC20(_uniswapPair).balanceOf(address(this));
     }
+
+    function getUniswapPoolTokenSupply() public view returns (uint) {
+        return IERC20(_uniswapPair).totalSupply();
+    }
+
+    function getUniswapPoolReserves() public view returns (uint112 reserve0, uint112 reserve1) {
+        (reserve0, reserve1, ) = IUniswapV2Pair(_uniswapPair).getReserves();
+    }
+
+    function getUniswapPair(address token) public view returns(IUniswapV2Pair pair){
+        pair = IUniswapV2Pair(UniswapV2Library.pairFor(_uniswapRouter.factory(), _WETH, token));
+    }
+
+    function getDalpProportionalReserves()
+        public
+        view
+        returns (uint reserve0Share, uint reserve1Share)
+    {
+        uint256 totalLiquidityTokens = getUniswapPoolTokenSupply();
+        uint256 contractLiquidityTokens = getUniswapPoolTokenHoldings();
+        (uint112 reserve0, uint112 reserve1) = getUniswapPoolReserves();
+
+        require(totalLiquidityTokens < _MAX_UINT112, "UINT112 overflow");
+        require(contractLiquidityTokens < _MAX_UINT112, "UINT112 overflow");
+
+        uint112 contractLiquidityTokensCasted = uint112(contractLiquidityTokens); // much higher
+
+        // underlying liquidity of contract's pool tokens
+        // returns underlying reserves holding of this contract for each asset
+        reserve0Share = FixedPoint.encode(reserve0).div(contractLiquidityTokensCasted).mul(totalLiquidityTokens).decode144();
+        reserve1Share = FixedPoint.encode(reserve1).div(contractLiquidityTokensCasted).mul(totalLiquidityTokens).decode144();
+    }
+
 
     //----------------------------------------
     // Internal functions
     //----------------------------------------
+  
 
     /**
      * @notice Add liquidity to a Uniswap pool with DALP controlled assets
@@ -419,5 +486,26 @@ contract DALPManager is Ownable {
         );
 
         return _uniswapRouter.getAmountOut(amountInA, reserveA, reserveB);
+    }
+
+    //----------------------------------------
+    // Private views
+    //----------------------------------------
+
+    function _calculateMintAmount(uint ethValue) private returns (uint mintAmount) {
+        (uint reserve0Share, uint reserve1Share) = getDalpProportionalReserves();
+        IUniswapV2Pair pair = getUniswapPair(_activeTokenPair);
+
+        address token0 = pair.token0();
+        address token1 = pair.token1();
+        _oracle.update(token0);
+        _oracle.update(token1);
+
+        uint valueToken0 = _oracle.consult(token0, reserve0Share);
+        uint valueToken1 = _oracle.consult(token1, reserve1Share);
+
+        uint decimals = dalp.decimals();
+        uint pricePerToken = (valueToken0.add(valueToken1)).mul(decimals).div(dalp.totalSupply());
+        mintAmount = ethValue.mul(decimals).div(pricePerToken);
     }
 }
