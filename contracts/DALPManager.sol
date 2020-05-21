@@ -29,6 +29,7 @@ contract DALPManager is Ownable, ReentrancyGuard {
     // State variables
     //----------------------------------------
 
+    uint private constant _DEFAULT_TOKEN_TO_ETH_FACTOR = 1000;
     uint112 private constant _MAX_UINT112 = uint112(-1);
     uint private constant _UNISWAP_V2_DEADLINE_DELTA = 15 minutes;
 
@@ -492,27 +493,34 @@ contract DALPManager is Ownable, ReentrancyGuard {
     // Private views
     //----------------------------------------
 
-    function _calculateMintAmount(uint ethValue) private returns (uint mintAmount) {
-        (uint reserve0Share, uint reserve1Share) = getDalpProportionalReserves();
-        IUniswapV2Pair pair = getUniswapPair(_activeTokenPair);
+    function _calculateMintAmount(uint ethValue) private returns (uint) {
+        uint totalValue = address(this).balance;
 
-        address token0 = pair.token0();
-        address token1 = pair.token1();
-        _oracle.update(token0);
-        _oracle.update(token1);
+        if (dalp.totalSupply() == 0) {
+            return ethValue * _DEFAULT_TOKEN_TO_ETH_FACTOR;
+        }
 
-        uint valueToken0 = _oracle.consult(token0, reserve0Share);
-        uint valueToken1 = _oracle.consult(token1, reserve1Share);
+        if (_activeTokenPair != address(0)) {
+            (uint reserve0Share, uint reserve1Share) = getDalpProportionalReserves();
+            IUniswapV2Pair pair = getUniswapPair(_activeTokenPair);
+
+            address token0 = pair.token0();
+            address token1 = pair.token1();
+            _oracle.update(token0);
+            _oracle.update(token1);
+
+            uint valueToken0 = _oracle.consult(token0, reserve0Share);
+            uint valueToken1 = _oracle.consult(token1, reserve1Share);
+
+            totalValue += valueToken0.add(valueToken1);
+        }
+
+        if (totalValue == 0) {
+            return ethValue * _DEFAULT_TOKEN_TO_ETH_FACTOR;
+        }
 
         uint decimals = dalp.decimals();
-        uint pricePerToken = (
-            valueToken0
-                .add(valueToken1)
-                .add(address(this).balance)
-            )
-            .mul(decimals)
-            .div(dalp.totalSupply());
-
-        mintAmount = ethValue.mul(decimals).div(pricePerToken);
+        uint pricePerToken = totalValue.mul(decimals).div(dalp.totalSupply());
+        return ethValue.mul(decimals).div(pricePerToken);
     }
 }
