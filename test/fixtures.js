@@ -9,6 +9,7 @@ const WETH9 = require("@uniswap/v2-periphery/build/WETH9.json");
 const UniswapV2Router01 = require("@uniswap/v2-periphery/build/UniswapV2Router01.json");
 
 const DALP = require("../artifacts/DALP.json");
+const OracleManager = require("../artifacts/OracleManager.json");
 const DALPManager = require("../artifacts/TestDALPManager.json");
 
 async function uniswapV2Fixture(provider, [wallet]) {
@@ -79,8 +80,21 @@ async function uniswapV2Fixture(provider, [wallet]) {
 async function dalpManagerFixture(provider, [wallet]) {
   const fixture = await uniswapV2Fixture(provider, [wallet]);
   const dalp = await deployContract(wallet, DALP);
-  const dalpManager = await deployContract(wallet, DALPManager, [fixture.router.address]);
-  return { ...fixture, dalp, dalpManager };
+  const oracle = await deployContract(
+    wallet,
+    OracleManager,
+    [fixture.factory.address, fixture.WETH.address]
+  );
+  const dalpManager = await deployContract(
+    wallet,
+    DALPManager,
+    [fixture.router.address, oracle.address]
+  );
+
+  await dalp.setManagerContractAddress(dalpManager.address);
+  await dalpManager.setTokenContract(dalp.address);
+
+  return { ...fixture, dalp, dalpManager, oracle };
 }
 
 module.exports = {
