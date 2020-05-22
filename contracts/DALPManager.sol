@@ -467,29 +467,39 @@ contract DALPManager is Ownable, ReentrancyGuard {
 
     function _getUniswapV2PairRating(IUniswapV2Pair pair) internal view returns (uint) {
         (uint112 reserve0, uint112 reserve1, ) = pair.getReserves();
-        uint rootK = Babylonian.sqrt(uint(reserve0).mul(reserve1));
 
+        // Get square root of k values
+        uint rootK = Babylonian.sqrt(uint(reserve0).mul(reserve1));
         uint rootKLast = Babylonian.sqrt(pair.kLast());
 
-        // Skip if there was negative growth, this would cause an overflow
-        require(rootK >= rootKLast, "DALPManager/overflow");
-
         // Skip if there is an overflow
-        require(rootK - rootKLast <= _MAX_UINT112, "DALPManager/overflow");
+        if (rootKLast > _MAX_UINT112) return 0;
 
         uint totalSupply = pair.totalSupply();
 
         // Skip if there would be a divide by zero or an overflow
-        require(totalSupply > 0, "DALPManager/divide-by-zero");
-        require(totalSupply <= _MAX_UINT112, "DALPManager/overflow");
+        if (totalSupply == 0) return 0;
+        if (totalSupply > _MAX_UINT112) return 0;
+
+        uint112 growthDenominator = (
+            FixedPoint.encode(uint112(rootKLast))
+                .div(uint112(totalSupply))
+                .decode()
+        );
+
+        // If the last root k was 0, the new k value is all growth
+        growthDenominator = growthDenominator > 0 ? growthDenominator : 1;
+
+        // Skip if there was negative growth, this would cause an overflow
+        if (rootK < rootKLast) return 0;
+        // Skip if there is an overflow
+        if (rootK - rootKLast > _MAX_UINT112) return 0;
 
         // percent growth of k over supply since last liquidity event
         FixedPoint.uq112x112 memory growth = (
             FixedPoint.encode(uint112(rootK - rootKLast))
-            .div(uint112(totalSupply))
-            .div(
-                uint112(rootKLast.div(uint112(totalSupply)))
-            )
+                .div(uint112(totalSupply))
+                .div(growthDenominator)
         );
 
         uint totalValue = 0;
@@ -500,10 +510,13 @@ contract DALPManager is Ownable, ReentrancyGuard {
         // Get value of token1 liquidity
         totalValue += _oracle.consult(pair.token1(), reserve1);
 
-        // Skip if there is an overflow
-        require(totalValue <= _MAX_UINT112, "DALPManager/overflow");
+        // Skip if there would be a divide by zero or an overflow
+        if (totalValue == 0) return 0;
+        if (totalValue > _MAX_UINT112) return 0;
 
-        return growth.div(uint112(totalValue)).decode();
+        // Multiply by some large factor to get a useable value
+        // TODO: This multiplication is not the ideal solution
+        return growth.div(uint112(totalValue)).mul(1e36).decode144();
     }
 
     /**
