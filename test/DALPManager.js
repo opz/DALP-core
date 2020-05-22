@@ -12,24 +12,28 @@ describe("DALPManager", () => {
   let token0;
   let token1;
   let WETH
+  let router;
   let pair;
   let pairWETH0;
   let pairWETH1;
   let dalpManager;
+  let oracle;
 
   beforeEach(async () => {
     ({
       token0,
       token1,
       WETH,
+      router,
       pair,
       pairWETH0,
       pairWETH1,
-      dalpManager
+      dalpManager,
+      oracle
     } = await loadFixture(dalpManagerFixture));
   });
 
-  it("addUniswapV2Liquidity", async () => {
+  it("_addUniswapV2Liquidity", async () => {
     // Test adding liquidity to token <-> token pair
     const tx1 = { to: dalpManager.address, value: utils.parseEther("1") };
     await wallet.sendTransaction(tx1);
@@ -41,5 +45,19 @@ describe("DALPManager", () => {
     await wallet.sendTransaction(tx2);
     await dalpManager.addUniswapV2Liquidity(token0.address, WETH.address);
     expect(await pairWETH0.balanceOf(dalpManager.address)).to.be.gt(0);
+  });
+
+  it("_getUniswapV2PairRating", async () => {
+    await router.swapExactETHForTokens(
+      0,
+      [WETH.address, token0.address],
+      wallet.address,
+      Date.now() + 100000,
+      { value: utils.parseEther("1") }
+    );
+    await oracle.update(token0.address);
+    await oracle.update(token1.address);
+    const pairRating = await dalpManager.getUniswapV2PairRating(pair.address);
+    expect(pairRating).to.be.equal("122142066491087372");
   });
 });
