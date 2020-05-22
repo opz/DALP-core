@@ -89,15 +89,16 @@ contract OracleManager {
         (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast) = pair.getReserves();
         require(reserve0 != 0 && reserve1 != 0, "Oracle Manager: NO_RESERVES");
 
-        OraclePairState storage oraclePair;
-        oraclePair.pair = pair;
-        oraclePair.token0 = pair.token0();
-        oraclePair.token1 = pair.token1();
-        oraclePair.price0CumulativeLast = pair.price0CumulativeLast();
-        oraclePair.price1CumulativeLast = pair.price1CumulativeLast();
-        oraclePair.blockTimestampLast = blockTimestampLast;
-
-        _oraclePairs[token] = oraclePair;
+        _oraclePairs[token] = OraclePairState(
+            pair,
+            pair.token0(),
+            pair.token1(),
+            pair.price0CumulativeLast(),
+            pair.price1CumulativeLast(),
+            blockTimestampLast,
+            FixedPoint.uq112x112(0),
+            FixedPoint.uq112x112(0)
+        );
     }
 
     function getUniswapPair(address token) public view returns(IUniswapV2Pair pair){
