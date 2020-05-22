@@ -79,16 +79,21 @@ async function uniswapV2Fixture(provider, [wallet]) {
 
 async function dalpManagerFixture(provider, [wallet]) {
   const fixture = await uniswapV2Fixture(provider, [wallet]);
+  const { pair, pairWETH0, pairWETH1, WETH, factory, router } = fixture;
+
   const dalp = await deployContract(wallet, DALP);
-  const oracle = await deployContract(
-    wallet,
-    OracleManager,
-    [fixture.factory.address, fixture.WETH.address]
-  );
+  const oracle = await deployContract(wallet, OracleManager, [factory.address, WETH.address]);
+
+  const uniswapTokenPairs = [
+    pairWETH0.address,
+    pairWETH1.address,
+    pair.address
+  ];
+
   const dalpManager = await deployContract(
     wallet,
     DALPManager,
-    [fixture.router.address, oracle.address],
+    [router.address, oracle.address, uniswapTokenPairs],
     { gasLimit: 9500000 } // Waffle default gas limit is too low
   );
 
