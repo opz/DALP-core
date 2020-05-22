@@ -496,10 +496,6 @@ contract DALPManager is Ownable, ReentrancyGuard {
     function _calculateMintAmount(uint ethValue) private returns (uint) {
         uint totalValue = address(this).balance;
 
-        if (dalp.totalSupply() == 0) {
-            return ethValue * _DEFAULT_TOKEN_TO_ETH_FACTOR;
-        }
-
         if (_activeTokenPair != address(0)) {
             (uint reserve0Share, uint reserve1Share) = getDalpProportionalReserves();
             IUniswapV2Pair pair = getUniswapPair(_activeTokenPair);
@@ -517,6 +513,11 @@ contract DALPManager is Ownable, ReentrancyGuard {
 
         if (totalValue == 0) {
             return ethValue * _DEFAULT_TOKEN_TO_ETH_FACTOR;
+        }
+
+        uint totalSupply = dalp.totalSupply();
+        if (totalSupply == 0) {
+            totalSupply = 1;
         }
 
         uint decimals = dalp.decimals();
