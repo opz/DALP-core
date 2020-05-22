@@ -521,7 +521,7 @@ contract DALPManager is Ownable, ReentrancyGuard {
         }
 
         uint decimals = dalp.decimals();
-        uint pricePerToken = totalValue.mul(decimals).div(dalp.totalSupply());
+        uint pricePerToken = totalValue.mul(decimals).div(totalSupply);
         return ethValue.mul(decimals).div(pricePerToken);
     }
 }
