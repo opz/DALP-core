@@ -46,7 +46,7 @@ contract OracleManager {
     }
 
     modifier oraclePairExists(address token) {
-        require(_oraclePairs[token].token1 == token, "Oracle token pair must exist");
+        require(getOraclePairExists(token), "Oracle token pair must exist");
         _;
     }
 
@@ -103,5 +103,9 @@ contract OracleManager {
 
     function getUniswapPair(address token) public view returns(IUniswapV2Pair pair){
         pair = IUniswapV2Pair(UniswapV2Library.pairFor(_factory, _weth, token));
+    }
+
+    function getOraclePairExists(address token) public view returns (bool) {
+        return _oraclePairs[token].token1 == token;
     }
 }

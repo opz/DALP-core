@@ -80,6 +80,18 @@ contract DALPManager is Ownable, ReentrancyGuard {
         _WETH = uniswapRouter.WETH();
         _oracle = oracle;
         _uniswapTokenPairs = uniswapTokenPairs;
+
+        for (uint i = 0; i < uniswapTokenPairs.length; i++) {
+            address token0 = IUniswapV2Pair(uniswapTokenPairs[i]).token0();
+            if (token0 != uniswapRouter.WETH() && oracle.getOraclePairExists(token0) == false) {
+                oracle.addPair(token0);
+            }
+
+            address token1 = IUniswapV2Pair(uniswapTokenPairs[i]).token1();
+            if (token1 != uniswapRouter.WETH() && oracle.getOraclePairExists(token1) == false) {
+                oracle.addPair(token1);
+            }
+        }
     }
 
     //----------------------------------------
