@@ -444,10 +444,10 @@ contract DALPManager is Ownable, ReentrancyGuard {
         for (uint i = 0; i < _uniswapTokenPairs.length; i++) {
             IUniswapV2Pair pair = IUniswapV2Pair(_uniswapTokenPairs[i]);
             address token0 = pair.token0();
-            _oracle.update(token0);
+            if (token0 != _WETH) _oracle.update(token0);
 
             address token1 = pair.token1();
-            _oracle.update(token1);
+            if (token1 != _WETH) _oracle.update(token1);
 
             uint rating = _getUniswapV2PairRating(pair);
 
