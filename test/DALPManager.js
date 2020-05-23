@@ -48,16 +48,43 @@ describe("DALPManager", () => {
   });
 
   it("_getUniswapV2PairRating", async () => {
+    const period = Number(await oracle.PERIOD());
+    const in2Hours = Math.floor(Date.now() / 1000) + period + 600;
     await router.swapExactETHForTokens(
       0,
       [WETH.address, token0.address],
       wallet.address,
-      Date.now() + 100000,
+      in2Hours,
       { value: utils.parseEther("1") }
     );
+    await provider.send("evm_mine", [in2Hours]);
     await oracle.update(token0.address);
-    await oracle.update(token1.address);
-    const pairRating = await dalpManager.getUniswapV2PairRating(pair.address);
-    expect(pairRating).to.be.equal("122142066491087372");
+    const pairRating = await dalpManager.getUniswapV2PairRating(pairWETH0.address);
+    expect(pairRating).to.be.equal("100077198575464220");
+  });
+
+  it("_findBestUpdatedUniswapV2Pair", async () => {
+    const period = Number(await oracle.PERIOD());
+    const in2Hours = Math.floor(Date.now() / 1000) + period + 600;
+
+    // Create growth for token0 <-> WETH pair
+    await router.swapExactETHForTokens(
+      0,
+      [WETH.address, token0.address],
+      wallet.address,
+      in2Hours,
+      { value: utils.parseEther("1") }
+    );
+
+    // Reduce total value of liquidity by removing liquidity
+    const withdraw = (await pairWETH0.balanceOf(wallet.address)).div(2);
+    await pairWETH0.approve(router.address, withdraw);
+    await router.removeLiquidity(WETH.address, token0.address, withdraw, 0, 0, wallet.address, in2Hours);
+
+    // Advance time so oracle will update the average price
+    await provider.send("evm_mine", [in2Hours]);
+
+    // token0 <-> WETH pair should be best because it has the most growth with least liquidity
+    expect(dalpManager.testFindBestUpdatedUniswapV2Pair(pairWETH0.address)).to.not.reverted;
   });
 });
