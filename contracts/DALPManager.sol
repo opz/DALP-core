@@ -669,8 +669,20 @@ contract DALPManager is Ownable, ReentrancyGuard {
             totalSupply = 1;
         }
 
-        uint decimals = dalp.decimals();
-        uint pricePerToken = totalValue.mul(decimals).div(totalSupply);
-        return ethValue.mul(decimals).div(pricePerToken);
+        uint112 decimals = 1e18;
+
+        require(totalValue <= _MAX_UINT112, "DALPManager/overflow");
+        require(totalSupply <= _MAX_UINT112, "DALPManager/overflow");
+        uint144 pricePerToken = FixedPoint
+            .fraction(uint112(totalValue), uint112(totalSupply))
+            .mul(decimals)
+            .decode144();
+
+        require(ethValue <= _MAX_UINT112, "DALPManager/overflow");
+        require(pricePerToken <= _MAX_UINT112, "DALPManager/overflow");
+        return FixedPoint.encode(uint112(ethValue))
+            .div(uint112(pricePerToken))
+            .mul(decimals)
+            .decode144();
     }
 }
