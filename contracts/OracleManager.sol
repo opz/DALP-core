@@ -50,6 +50,14 @@ contract OracleManager {
         _;
     }
 
+    modifier oraclePairExistsOrIsWETH(address token) {
+        require(
+            getOraclePairExists(token) || token == _weth,
+            "OracleManager/invalid-pair"
+        );
+        _;
+    }
+
     function update(address token) external oraclePairExists(token) {
         IUniswapV2Pair pair = getUniswapPair(token);
         (uint32 blockTimestamp, uint price0Cumulative, uint price1Cumulative) =
@@ -74,12 +82,17 @@ contract OracleManager {
 
     // note this will always return 0 before update has been called successfully for the first time.
     // address token must be non-weth token
-    function consult(address token, uint amountIn) external view oraclePairExists(token) returns (uint amountOut) {
-        if(token == _weth) return amountIn;
+    function consult(address token, uint amountIn)
+        external
+        view
+        oraclePairExistsOrIsWETH(token)
+        returns (uint)
+    {
+        if (token == _weth) return amountIn;
 
         OraclePairState memory oraclePair = _oraclePairs[token];
 
-        amountOut = oraclePair.price1Average.mul(amountIn).decode144();
+        return oraclePair.price1Average.mul(amountIn).decode144();
     }
 
     // add oracle pair: weth<=>token
