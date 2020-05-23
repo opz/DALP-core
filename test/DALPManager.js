@@ -60,7 +60,10 @@ describe("DALPManager", () => {
     await provider.send("evm_mine", [in2Hours]);
     await oracle.update(token0.address);
     const pairRating = await dalpManager.getUniswapV2PairRating(pairWETH0.address);
-    expect(pairRating).to.be.equal("100077198575464220");
+
+    const rating = utils.bigNumberify("100077198575464220");
+    expect(pairRating).to.be.above(rating.sub(rating.div(20)));
+    expect(pairRating).to.be.below(rating.add(rating.div(20)));
   });
 
   it("_findBestUpdatedUniswapV2Pair", async () => {
