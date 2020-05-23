@@ -1,4 +1,5 @@
 pragma solidity ^0.6.6;
+pragma experimental ABIEncoderV2;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -6,6 +7,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 
 import {FixedPoint} from "@uniswap/lib/contracts/libraries/FixedPoint.sol";
+import {Babylonian} from "@uniswap/lib/contracts/libraries/Babylonian.sol";
 import {IWETH} from "@uniswap/v2-periphery/contracts/interfaces/IWETH.sol";
 import {UniswapV2Library} from "@uniswap/v2-periphery/contracts/libraries/UniswapV2Library.sol";
 import {IUniswapV2Router01} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router01.sol";
@@ -36,14 +38,11 @@ contract DALPManager is Ownable, ReentrancyGuard {
     // Limit slippage to 0.5%
     uint112 private constant _UNISWAP_V2_SLIPPAGE_LIMIT = 200;
 
-    // token DALP is currently provisioning liquidity for
-    // the WETH<=>activeTokenPair is current Uniswap pair
-    // ex: DAI address
-    address private _activeTokenPair;
-
-    // address of uniswap pair pool
+    // address of the active Uniswap v2 pair
     address private _uniswapPair;
 
+    // Uniswap v2 token pairs that will analyzed for investment
+    address[] private _uniswapTokenPairs;
 
     //----------------------------------------
     // State variables
@@ -78,10 +77,27 @@ contract DALPManager is Ownable, ReentrancyGuard {
     // Constructor
     //----------------------------------------
 
-    constructor(IUniswapV2Router01 uniswapRouter, OracleManager oracle) public {
+    constructor(
+        IUniswapV2Router01 uniswapRouter,
+        OracleManager oracle,
+        address[] memory uniswapTokenPairs
+    ) public {
         _uniswapRouter = uniswapRouter;
         _WETH = uniswapRouter.WETH();
         _oracle = oracle;
+        _uniswapTokenPairs = uniswapTokenPairs;
+
+        for (uint i = 0; i < uniswapTokenPairs.length; i++) {
+            address token0 = IUniswapV2Pair(uniswapTokenPairs[i]).token0();
+            if (token0 != uniswapRouter.WETH() && oracle.getOraclePairExists(token0) == false) {
+                oracle.addPair(token0);
+            }
+
+            address token1 = IUniswapV2Pair(uniswapTokenPairs[i]).token1();
+            if (token1 != uniswapRouter.WETH() && oracle.getOraclePairExists(token1) == false) {
+                oracle.addPair(token1);
+            }
+        }
     }
 
     //----------------------------------------
@@ -99,6 +115,16 @@ contract DALPManager is Ownable, ReentrancyGuard {
         return _calculateMintAmount(ethValue);
     }
 
+    /**
+     * @notice Allocates all DALP assets to the most profitable Uniswap v2 pair
+     * TODO: Remove liquidity from the existing pair to reallocate
+     */
+    function reallocateLiquidity() external nonReentrant onlyOwner {
+        IUniswapV2Pair pair = _findBestUpdatedUniswapV2Pair();
+        _addUniswapV2Liquidity(pair.token0(), pair.token1());
+        setUniswapPair(address(pair));
+    }
+
     //----------------------------------------
     // Public functions
     //----------------------------------------
@@ -106,10 +132,6 @@ contract DALPManager is Ownable, ReentrancyGuard {
     // called by admin on deployment
     function setTokenContract(address tokenAddress) public onlyOwner {
         dalp = DALP(tokenAddress);
-    }
-
-    function setActiveTokenPair(address token1) public onlyOwner {
-        _activeTokenPair = token1;
     }
 
     function setUniswapPair(address uniswapPair) public onlyOwner {
@@ -131,6 +153,10 @@ contract DALPManager is Ownable, ReentrancyGuard {
         dalp.burn(msg.sender, tokensToBurn);
     }
 
+    function findBestUniswapV2Pair() public view returns (address) {
+        return address(_findBestUniswapV2Pair());
+    }
+
     //----------------------------------------
     // Public views
     //----------------------------------------
@@ -147,7 +173,7 @@ contract DALPManager is Ownable, ReentrancyGuard {
         (reserve0, reserve1, ) = IUniswapV2Pair(_uniswapPair).getReserves();
     }
 
-    function getUniswapPair(address token) public view returns(IUniswapV2Pair pair){
+    function getUniswapPair(address token) public view returns (IUniswapV2Pair pair) {
         pair = IUniswapV2Pair(UniswapV2Library.pairFor(_uniswapRouter.factory(), _WETH, token));
     }
 
@@ -171,11 +197,9 @@ contract DALPManager is Ownable, ReentrancyGuard {
         reserve1Share = FixedPoint.encode(reserve1).div(contractLiquidityTokensCasted).mul(totalLiquidityTokens).decode144();
     }
 
-
     //----------------------------------------
     // Internal functions
     //----------------------------------------
-  
 
     /**
      * @notice Add liquidity to a Uniswap pool with DALP controlled assets
@@ -209,8 +233,8 @@ contract DALPManager is Ownable, ReentrancyGuard {
         }
 
         // Approve tokens for transfer to Uniswap pair
-        IERC20(tokenA).safeApprove(address(_uniswapRouter), amountADesired);
-        IERC20(tokenB).safeApprove(address(_uniswapRouter), amountBDesired);
+        IERC20(tokenA).safeIncreaseAllowance(address(_uniswapRouter), amountADesired);
+        IERC20(tokenB).safeIncreaseAllowance(address(_uniswapRouter), amountBDesired);
 
         (uint amountA, uint amountB, uint liquidity) = _uniswapRouter.addLiquidity(
             tokenA,
@@ -405,7 +429,7 @@ contract DALPManager is Ownable, ReentrancyGuard {
         path[0] = token;
         path[1] = _WETH;
 
-        IERC20(token).safeApprove(address(_uniswapRouter), amountIn);
+        IERC20(token).safeIncreaseAllowance(address(_uniswapRouter), amountIn);
 
         return _uniswapRouter.swapExactTokensForTokens(
             amountIn,
@@ -416,9 +440,121 @@ contract DALPManager is Ownable, ReentrancyGuard {
         );
     }
 
+    /**
+     * @notice Find which Uniswap v2 pair will earn the most fees
+     * @notice Uses latest oracle values when rating pairs
+     * @return The address of the best Uniswap v2 pair
+     */
+    function _findBestUpdatedUniswapV2Pair() internal returns (IUniswapV2Pair) {
+        IUniswapV2Pair bestPair;
+        uint bestRating = 0;
+
+        for (uint i = 0; i < _uniswapTokenPairs.length; i++) {
+            IUniswapV2Pair pair = IUniswapV2Pair(_uniswapTokenPairs[i]);
+            address token0 = pair.token0();
+            if (token0 != _WETH) _oracle.update(token0);
+
+            address token1 = pair.token1();
+            if (token1 != _WETH) _oracle.update(token1);
+
+            uint rating = _getUniswapV2PairRating(pair);
+
+            // Track the best rated pair
+            if (rating > bestRating) {
+                bestPair = pair;
+                bestRating = rating;
+            }
+        }
+
+        return bestPair;
+    }
+
     //----------------------------------------
     // Internal views
     //----------------------------------------
+
+    /**
+     * @notice Rates a Uniswap v2 pair on its ability to generate fees
+     * @dev Rating system looks for pairs with the most fees and least liquidity
+     * @param pair The Uniswap v2 pair to rate
+     * @return The Uniswap v2 pair's rating
+     */
+    function _getUniswapV2PairRating(IUniswapV2Pair pair) internal view returns (uint) {
+        (uint112 reserve0, uint112 reserve1, ) = pair.getReserves();
+
+        // Get square root of k values
+        uint rootK = Babylonian.sqrt(uint(reserve0).mul(reserve1));
+        uint rootKLast = Babylonian.sqrt(pair.kLast());
+
+        // Skip if there is an overflow
+        if (rootKLast > _MAX_UINT112) return 0;
+
+        uint totalSupply = pair.totalSupply();
+
+        // Skip if there would be a divide by zero or an overflow
+        if (totalSupply == 0) return 0;
+        if (totalSupply > _MAX_UINT112) return 0;
+
+        uint112 growthDenominator = (
+            FixedPoint.encode(uint112(rootKLast))
+                .div(uint112(totalSupply))
+                .decode()
+        );
+
+        // If the last root k was 0, the new k value is all growth
+        growthDenominator = growthDenominator > 0 ? growthDenominator : 1;
+
+        // Skip if there was negative growth, this would cause an overflow
+        if (rootK < rootKLast) return 0;
+        // Skip if there is an overflow
+        if (rootK - rootKLast > _MAX_UINT112) return 0;
+
+        // percent growth of k over supply since last liquidity event
+        FixedPoint.uq112x112 memory growth = (
+            FixedPoint.encode(uint112(rootK - rootKLast))
+                .div(uint112(totalSupply))
+                .div(growthDenominator)
+        );
+
+        uint totalValue = 0;
+
+        // Get value of token0 liquidity
+        totalValue += _oracle.consult(pair.token0(), reserve0);
+
+        // Get value of token1 liquidity
+        totalValue += _oracle.consult(pair.token1(), reserve1);
+
+        // Skip if there would be a divide by zero or an overflow
+        if (totalValue == 0) return 0;
+        if (totalValue > _MAX_UINT112) return 0;
+
+        // Multiply by some large factor to get a useable value
+        // TODO: This multiplication is not the ideal solution
+        return growth.div(uint112(totalValue)).mul(1e36).decode144();
+    }
+
+    /**
+     * @notice Find which Uniswap v2 pair will earn the most fees
+     * @notice Oracle is not updated, values may be stale
+     * @return The address of the best Uniswap v2 pair
+     */
+    function _findBestUniswapV2Pair() internal view returns (IUniswapV2Pair) {
+        IUniswapV2Pair bestPair;
+        uint bestRating = 0;
+
+        for (uint i = 0; i < _uniswapTokenPairs.length; i++) {
+            IUniswapV2Pair pair = IUniswapV2Pair(_uniswapTokenPairs[i]);
+            uint rating = _getUniswapV2PairRating(pair);
+
+            // Track the best rated pair
+            if (rating > bestRating) {
+                bestPair = pair;
+                bestRating = rating;
+            }
+        }
+
+        return bestPair;
+    }
 
     /**
      * @notice Get balanced token amounts for adding liquidity to a Uniswap v2 pair
@@ -501,12 +637,19 @@ contract DALPManager is Ownable, ReentrancyGuard {
     // Private views
     //----------------------------------------
 
+    /**
+     * TODO: Handle cases where one token in the pair is WETH and _oracle.update is called
+     */
     function _calculateMintAmount(uint ethValue) private returns (uint) {
         uint totalValue = address(this).balance;
 
-        if (_activeTokenPair != address(0)) {
+        if (dalp.totalSupply() == 0) {
+            return ethValue * _DEFAULT_TOKEN_TO_ETH_FACTOR;
+        }
+
+        if (_uniswapPair != address(0)) {
             (uint reserve0Share, uint reserve1Share) = getDalpProportionalReserves();
-            IUniswapV2Pair pair = getUniswapPair(_activeTokenPair);
+            IUniswapV2Pair pair = IUniswapV2Pair(_uniswapPair);
 
             address token0 = pair.token0();
             address token1 = pair.token1();

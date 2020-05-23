@@ -46,7 +46,15 @@ contract OracleManager {
     }
 
     modifier oraclePairExists(address token) {
-        require(_oraclePairs[token].token1 == token, "Oracle token pair must exist");
+        require(getOraclePairExists(token), "Oracle token pair must exist");
+        _;
+    }
+
+    modifier oraclePairExistsOrIsWETH(address token) {
+        require(
+            getOraclePairExists(token) || token == _weth,
+            "OracleManager/invalid-pair"
+        );
         _;
     }
 
@@ -59,8 +67,7 @@ contract OracleManager {
         uint32 timeElapsed = blockTimestamp - oraclePair.blockTimestampLast; // overflow is desired
 
         // ensure that at least one full period has passed since the last update
-        // require(timeElapsed >= PERIOD, 'ExampleOracleSimple: PERIOD_NOT_ELAPSED');
-        if(timeElapsed >= PERIOD) return;
+        if (timeElapsed < PERIOD) return;
 
         // overflow is desired, casting never truncates
         // cumulative price is in (uq112x112 price * seconds) units so we simply wrap it after division by time elapsed
@@ -74,12 +81,17 @@ contract OracleManager {
 
     // note this will always return 0 before update has been called successfully for the first time.
     // address token must be non-weth token
-    function consult(address token, uint amountIn) external view oraclePairExists(token) returns (uint amountOut) {
-        if(token == _weth) return amountIn;
+    function consult(address token, uint amountIn)
+        external
+        view
+        oraclePairExistsOrIsWETH(token)
+        returns (uint)
+    {
+        if (token == _weth) return amountIn;
 
         OraclePairState memory oraclePair = _oraclePairs[token];
 
-        amountOut = oraclePair.price1Average.mul(amountIn).decode144();
+        return oraclePair.price1Average.mul(amountIn).decode144();
     }
 
     // add oracle pair: weth<=>token
@@ -89,18 +101,23 @@ contract OracleManager {
         (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast) = pair.getReserves();
         require(reserve0 != 0 && reserve1 != 0, "Oracle Manager: NO_RESERVES");
 
-        OraclePairState storage oraclePair;
-        oraclePair.pair = pair;
-        oraclePair.token0 = pair.token0();
-        oraclePair.token1 = pair.token1();
-        oraclePair.price0CumulativeLast = pair.price0CumulativeLast();
-        oraclePair.price1CumulativeLast = pair.price1CumulativeLast();
-        oraclePair.blockTimestampLast = blockTimestampLast;
-
-        _oraclePairs[token] = oraclePair;
+        _oraclePairs[token] = OraclePairState(
+            pair,
+            pair.token0(),
+            pair.token1(),
+            pair.price0CumulativeLast(),
+            pair.price1CumulativeLast(),
+            blockTimestampLast,
+            FixedPoint.uq112x112(0),
+            FixedPoint.uq112x112(0)
+        );
     }
 
-    function getUniswapPair(address token) public view returns(IUniswapV2Pair pair){
+    function getUniswapPair(address token) public view returns (IUniswapV2Pair pair) {
         pair = IUniswapV2Pair(UniswapV2Library.pairFor(_factory, _weth, token));
+    }
+
+    function getOraclePairExists(address token) public view returns (bool) {
+        return _oraclePairs[token].token1 != address(0);
     }
 }
