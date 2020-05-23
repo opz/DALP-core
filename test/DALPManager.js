@@ -121,4 +121,12 @@ describe("DALPManager", () => {
     // DALPManager should now have LP shares in the token0 <-> WETH pair
     expect(await pairWETH0.balanceOf(dalpManager.address)).to.be.gt(0);
   });
+
+  it("calculateMintAmount", async () => {
+    const amountFromNothing = await dalpManager.calculateMintAmount(utils.parseEther("1"));
+
+    await dalpManager.mint({ value: utils.parseEther("1") });
+
+    const amountAfterMint = await dalpManager.calculateMintAmount(utils.parseEther("1"));
+  });
 });
