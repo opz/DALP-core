@@ -38,20 +38,16 @@ contract DALPManager is Ownable, ReentrancyGuard {
     // Limit slippage to 0.5%
     uint112 private constant _UNISWAP_V2_SLIPPAGE_LIMIT = 200;
 
+    DALP public dalp; // DALP token
+    IUniswapV2Router01 private immutable _uniswapRouter;
+    address private immutable _WETH; // solhint-disable-line var-name-mixedcase
+    OracleManager private _oracle;
+
     // address of the active Uniswap v2 pair
     address private _uniswapPair;
 
     // Uniswap v2 token pairs that will analyzed for investment
     address[] private _uniswapTokenPairs;
-
-    //----------------------------------------
-    // State variables
-    //----------------------------------------
-
-    DALP public dalp; // DALP token
-    IUniswapV2Router01 private immutable _uniswapRouter;
-    address private immutable _WETH; // solhint-disable-line var-name-mixedcase
-    OracleManager private _oracle;
 
     //----------------------------------------
     // Events
