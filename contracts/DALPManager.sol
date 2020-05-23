@@ -225,8 +225,8 @@ contract DALPManager is Ownable, ReentrancyGuard {
         }
 
         // Approve tokens for transfer to Uniswap pair
-        IERC20(tokenA).safeApprove(address(_uniswapRouter), amountADesired);
-        IERC20(tokenB).safeApprove(address(_uniswapRouter), amountBDesired);
+        IERC20(tokenA).safeIncreaseAllowance(address(_uniswapRouter), amountADesired);
+        IERC20(tokenB).safeIncreaseAllowance(address(_uniswapRouter), amountBDesired);
 
         (uint amountA, uint amountB, uint liquidity) = _uniswapRouter.addLiquidity(
             tokenA,
@@ -421,7 +421,7 @@ contract DALPManager is Ownable, ReentrancyGuard {
         path[0] = token;
         path[1] = _WETH;
 
-        IERC20(token).safeApprove(address(_uniswapRouter), amountIn);
+        IERC20(token).safeIncreaseAllowance(address(_uniswapRouter), amountIn);
 
         return _uniswapRouter.swapExactTokensForTokens(
             amountIn,
