@@ -87,4 +87,35 @@ describe("DALPManager", () => {
     // token0 <-> WETH pair should be best because it has the most growth with least liquidity
     expect(dalpManager.testFindBestUpdatedUniswapV2Pair(pairWETH0.address)).to.not.reverted;
   });
+
+  it("reallocateLiquidity", async () => {
+    const period = Number(await oracle.PERIOD());
+    const in2Hours = Math.floor(Date.now() / 1000) + period + 600;
+
+    // Create growth for token0 <-> WETH pair
+    await router.swapExactETHForTokens(
+      0,
+      [WETH.address, token0.address],
+      wallet.address,
+      in2Hours,
+      { value: utils.parseEther("1") }
+    );
+
+    // Reduce total value of liquidity by removing liquidity
+    const withdraw = (await pairWETH0.balanceOf(wallet.address)).div(2);
+    await pairWETH0.approve(router.address, withdraw);
+    await router.removeLiquidity(WETH.address, token0.address, withdraw, 0, 0, wallet.address, in2Hours);
+
+    // Advance time so oracle will update the average price
+    await provider.send("evm_mine", [in2Hours]);
+
+    // Send ETH for the DALP to invest with
+    const tx = { to: dalpManager.address, value: utils.parseEther("1") };
+    await wallet.sendTransaction(tx);
+
+    await dalpManager.reallocateLiquidity();
+
+    // DALPManager should now have LP shares in the token0 <-> WETH pair
+    expect(await pairWETH0.balanceOf(dalpManager.address)).to.be.gt(0);
+  });
 });
