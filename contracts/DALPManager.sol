@@ -67,6 +67,12 @@ contract DALPManager is Ownable, ReentrancyGuard {
         uint liquidity
     );
 
+    event MintDALP(
+        address sender,
+        uint tokenAmount,
+        uint ethAmount
+    );
+
     //----------------------------------------
     // Constructor
     //----------------------------------------
@@ -136,6 +142,8 @@ contract DALPManager is Ownable, ReentrancyGuard {
         require(msg.value > 0, "Must send ETH");
         uint mintAmount = _calculateMintAmount(msg.value);
         dalp.mint(msg.sender, mintAmount);
+
+        emit MintDALP(msg.sender, mintAmount, msg.value);
     }
 
     function burn(uint tokensToBurn) public nonReentrant {
@@ -658,8 +666,13 @@ contract DALPManager is Ownable, ReentrancyGuard {
             return ethValue * _DEFAULT_TOKEN_TO_ETH_FACTOR;
         }
 
+        uint totalSupply = dalp.totalSupply();
+        if (totalSupply == 0) {
+            totalSupply = 1;
+        }
+
         uint decimals = dalp.decimals();
-        uint pricePerToken = totalValue.mul(decimals).div(dalp.totalSupply());
+        uint pricePerToken = totalValue.mul(decimals).div(totalSupply);
         return ethValue.mul(decimals).div(pricePerToken);
     }
 }

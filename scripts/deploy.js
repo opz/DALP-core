@@ -57,7 +57,7 @@ async function main() {
   await dalp.setManagerContractAddress(dalpManager.address);
   await dalpManager.setTokenContract(dalp.address);
 
-  displayContractInfo(dalp, "DALP Manager");
+  displayContractInfo(dalpManager, "DALP Manager");
 
   // Write contract addresses to a network config file
   fs.writeFileSync(`artifacts/${network.name}.json`, JSON.stringify(contracts, null, 2));
