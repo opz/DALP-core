@@ -113,11 +113,11 @@ contract OracleManager {
         );
     }
 
-    function getUniswapPair(address token) public view returns(IUniswapV2Pair pair){
+    function getUniswapPair(address token) public view returns (IUniswapV2Pair pair) {
         pair = IUniswapV2Pair(UniswapV2Library.pairFor(_factory, _weth, token));
     }
 
     function getOraclePairExists(address token) public view returns (bool) {
-        return _oraclePairs[token].token1 == token;
+        return _oraclePairs[token].token1 != address(0);
     }
 }
