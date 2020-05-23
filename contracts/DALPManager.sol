@@ -104,12 +104,8 @@ contract DALPManager is Ownable, ReentrancyGuard {
     receive() external payable {}
 
     //----------------------------------------
-    // External views
+    // External functions
     //----------------------------------------
-
-    function calculateMintAmount(uint ethValue) external nonReentrant returns (uint) {
-        return _calculateMintAmount(ethValue);
-    }
 
     /**
      * @notice Allocates all DALP assets to the most profitable Uniswap v2 pair
@@ -119,6 +115,14 @@ contract DALPManager is Ownable, ReentrancyGuard {
         IUniswapV2Pair pair = _findBestUpdatedUniswapV2Pair();
         _addUniswapV2Liquidity(pair.token0(), pair.token1());
         setUniswapPair(address(pair));
+    }
+
+    //----------------------------------------
+    // External views
+    //----------------------------------------
+
+    function calculateMintAmount(uint ethValue) external view returns (uint) {
+        return _calculateMintAmount(ethValue);
     }
 
     //----------------------------------------
@@ -636,7 +640,7 @@ contract DALPManager is Ownable, ReentrancyGuard {
     /**
      * TODO: Handle cases where one token in the pair is WETH and _oracle.update is called
      */
-    function _calculateMintAmount(uint ethValue) private returns (uint) {
+    function _calculateMintAmount(uint ethValue) private view returns (uint) {
         uint totalValue = address(this).balance;
 
         if (dalp.totalSupply() == 0) {
@@ -649,8 +653,6 @@ contract DALPManager is Ownable, ReentrancyGuard {
 
             address token0 = pair.token0();
             address token1 = pair.token1();
-            _oracle.update(token0);
-            _oracle.update(token1);
 
             uint valueToken0 = _oracle.consult(token0, reserve0Share);
             uint valueToken1 = _oracle.consult(token1, reserve1Share);
