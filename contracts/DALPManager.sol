@@ -629,6 +629,9 @@ contract DALPManager is Ownable, ReentrancyGuard {
     // Private views
     //----------------------------------------
 
+    /**
+     * TODO: Handle cases where one token in the pair is WETH and _oracle.update is called
+     */
     function _calculateMintAmount(uint ethValue) private returns (uint) {
         uint totalValue = address(this).balance;
 
