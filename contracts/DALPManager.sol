@@ -465,6 +465,12 @@ contract DALPManager is Ownable, ReentrancyGuard {
     // Internal views
     //----------------------------------------
 
+    /**
+     * @notice Rates a Uniswap v2 pair on its ability to generate fees
+     * @dev Rating system looks for pairs with the most fees and least liquidity
+     * @param pair The Uniswap v2 pair to rate
+     * @return The Uniswap v2 pair's rating
+     */
     function _getUniswapV2PairRating(IUniswapV2Pair pair) internal view returns (uint) {
         (uint112 reserve0, uint112 reserve1, ) = pair.getReserves();
 
