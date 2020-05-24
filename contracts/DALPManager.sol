@@ -69,6 +69,10 @@ contract DALPManager is Ownable, ReentrancyGuard {
         uint ethAmount
     );
 
+    event LiquidityEvent(
+        uint totalValue
+    );
+
     //----------------------------------------
     // Constructor
     //----------------------------------------
@@ -209,6 +213,25 @@ contract DALPManager is Ownable, ReentrancyGuard {
             .decode144();
     }
 
+    function getDALPTotalValue() public view returns (uint) {
+        uint totalValue = address(this).balance;
+
+        if (_uniswapPair != address(0)) {
+            (uint reserve0Share, uint reserve1Share) = getDalpProportionalReserves();
+            IUniswapV2Pair pair = IUniswapV2Pair(_uniswapPair);
+
+            address token0 = pair.token0();
+            address token1 = pair.token1();
+
+            uint valueToken0 = _oracle.consult(token0, reserve0Share);
+            uint valueToken1 = _oracle.consult(token1, reserve1Share);
+
+            totalValue += valueToken0.add(valueToken1);
+        }
+
+        return totalValue;
+    }
+
     //----------------------------------------
     // Internal functions
     //----------------------------------------
@@ -299,6 +322,8 @@ contract DALPManager is Ownable, ReentrancyGuard {
             amountB,
             liquidity
         );
+
+        emit LiquidityEvent(getDALPTotalValue());
     }
 
     /**
@@ -653,32 +678,11 @@ contract DALPManager is Ownable, ReentrancyGuard {
      * TODO: Handle cases where one token in the pair is WETH and _oracle.update is called
      */
     function _calculateMintAmount(uint ethValue) private view returns (uint) {
-        uint totalValue = address(this).balance;
-
-        if (dalp.totalSupply() == 0) {
-            return ethValue * _DEFAULT_TOKEN_TO_ETH_FACTOR;
-        }
-
-        if (_uniswapPair != address(0)) {
-            (uint reserve0Share, uint reserve1Share) = getDalpProportionalReserves();
-            IUniswapV2Pair pair = IUniswapV2Pair(_uniswapPair);
-
-            address token0 = pair.token0();
-            address token1 = pair.token1();
-
-            uint valueToken0 = _oracle.consult(token0, reserve0Share);
-            uint valueToken1 = _oracle.consult(token1, reserve1Share);
-
-            totalValue += valueToken0.add(valueToken1);
-        }
-
-        if (totalValue == 0) {
-            return ethValue * _DEFAULT_TOKEN_TO_ETH_FACTOR;
-        }
-
+        uint totalValue = getDALPTotalValue();
         uint totalSupply = dalp.totalSupply();
-        if (totalSupply == 0) {
-            totalSupply = 1;
+
+        if (totalValue == 0 || totalSupply == 0) {
+            return ethValue * _DEFAULT_TOKEN_TO_ETH_FACTOR;
         }
 
         uint112 decimals = 1e18;
