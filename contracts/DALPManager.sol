@@ -122,7 +122,11 @@ contract DALPManager is Ownable, ReentrancyGuard {
     //----------------------------------------
 
     function getActiveUniswapV2Tokens() external view returns (address, address) {
-        return (IUniswapV2Pair(_uniswapPair).token0(), IUniswapV2Pair(_uniswapPair).token1());
+        if (_uniswapPair == address(0)) {
+            return (address(0), address(0));
+        } else {
+            return (IUniswapV2Pair(_uniswapPair).token0(), IUniswapV2Pair(_uniswapPair).token1());
+        }
     }
 
     function calculateMintAmount(uint ethValue) external view returns (uint) {
