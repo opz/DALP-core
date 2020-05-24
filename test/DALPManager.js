@@ -107,9 +107,9 @@ describe("DALPManager", () => {
     );
 
     // Reduce total value of liquidity by removing liquidity
-    const withdraw = (await pairWETH0.balanceOf(wallet.address)).div(2);
-    await pairWETH0.approve(router.address, withdraw);
-    await router.removeLiquidity(WETH.address, token0.address, withdraw, 0, 0, wallet.address, in2Hours);
+    const withdraw0 = (await pairWETH0.balanceOf(wallet.address)).div(2);
+    await pairWETH0.approve(router.address, withdraw0);
+    await router.removeLiquidity(WETH.address, token0.address, withdraw0, 0, 0, wallet.address, in2Hours);
 
     // Advance time so oracle will update the average price
     await provider.send("evm_mine", [in2Hours]);
@@ -122,6 +122,31 @@ describe("DALPManager", () => {
 
     // DALPManager should now have LP shares in the token0 <-> WETH pair
     expect(await pairWETH0.balanceOf(dalpManager.address)).to.be.gt(0);
+
+    const next2Hours = in2Hours + period + 600;
+
+    // Create growth for token1 <-> WETH pair
+    await router.swapExactETHForTokens(
+      0,
+      [WETH.address, token1.address],
+      wallet.address,
+      next2Hours,
+      { value: utils.parseEther("10") }
+    );
+
+    // Reduce total value of liquidity by removing liquidity
+    const withdraw1 = (await pairWETH1.balanceOf(wallet.address)).div(10).mul(9);
+    await pairWETH1.approve(router.address, withdraw1);
+    await router.removeLiquidity(WETH.address, token1.address, withdraw1, 0, 0, wallet.address, next2Hours);
+
+    // Advance time so oracle will update the average price
+    await provider.send("evm_mine", [next2Hours]);
+
+    await dalpManager.reallocateLiquidity();
+
+    // DALPManager should now have LP shares in the token1 <-> WETH pair
+    expect(await pairWETH0.balanceOf(dalpManager.address)).to.be.equal(0);
+    expect(await pairWETH1.balanceOf(dalpManager.address)).to.be.gt(0);
   });
 
   it("calculateMintAmount", async () => {
