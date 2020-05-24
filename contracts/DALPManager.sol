@@ -120,7 +120,7 @@ contract DALPManager is Ownable, ReentrancyGuard {
 
         if (_uniswapPair != address(pair)) {
             if (_uniswapPair != address(0)) {
-                _removeUniswapV2Liquidity();
+                _removeAllUniswapV2Liquidity();
             }
 
             _addUniswapV2Liquidity(pair.token0(), pair.token1());
@@ -164,13 +164,9 @@ contract DALPManager is Ownable, ReentrancyGuard {
         dalp.mint(msg.sender, mintAmount);
 
         if (_uniswapPair != address(0)) {
-            address token0 = IUniswapV2Pair(_uniswapPair).token0();
-            if (token0 != _WETH) _oracle.update(token0);
-
-            address token1 = IUniswapV2Pair(_uniswapPair).token1();
-            if (token1 != _WETH) _oracle.update(token1);
-
-            _addUniswapV2Liquidity(token0, token1);
+            IUniswapV2Pair pair = IUniswapV2Pair(_uniswapPair);
+            _updateOracle(pair);
+            _addUniswapV2Liquidity(pair.token0(), pair.token1());
         }
 
         emit MintDALP(msg.sender, mintAmount, msg.value);
@@ -210,25 +206,37 @@ contract DALPManager is Ownable, ReentrancyGuard {
     function getDalpProportionalReserves()
         public
         view
-        returns (uint reserve0Share, uint reserve1Share)
+        returns (uint, uint)
     {
-        uint256 totalLiquidityTokens = getUniswapPoolTokenSupply();
-        uint256 contractLiquidityTokens = getUniswapPoolTokenHoldings();
+        uint256 liquidity = getUniswapPoolTokenHoldings();
+        return getLiquidityProportionalReserves(liquidity);
+    }
+
+    function getLiquidityProportionalReserves(uint liquidity)
+        public
+        view
+        returns (uint, uint)
+    {
+        require(liquidity <= _MAX_UINT112, "DALPManager/overflow");
+
         (uint112 reserve0, uint112 reserve1) = getUniswapPoolReserves();
 
-        require(totalLiquidityTokens < _MAX_UINT112, "DALPManager/overflow");
-        require(contractLiquidityTokens < _MAX_UINT112, "DALPManager/overflow");
+        IUniswapV2Pair pair = IUniswapV2Pair(_uniswapPair);
+        uint totalLiquidity = pair.totalSupply();
+        require(totalLiquidity <= _MAX_UINT112, "DALPManager/overflow");
 
-        // underlying liquidity of contract's pool tokens
-        // returns underlying reserves holding of this contract for each asset
-        reserve0Share = FixedPoint.encode(reserve0)
-            .div(uint112(totalLiquidityTokens))
-            .mul(uint112(contractLiquidityTokens))
-            .decode144();
-        reserve1Share = FixedPoint.encode(reserve1)
-            .div(uint112(totalLiquidityTokens))
-            .mul(uint112(contractLiquidityTokens))
-            .decode144();
+        FixedPoint.uq112x112 memory shareOfLiquidity = FixedPoint.fraction(
+            uint112(liquidity),
+            uint112(totalLiquidity)
+        );
+
+        require(reserve0 <= _MAX_UINT112, "DALPManager/overflow");
+        uint reserve0Share = shareOfLiquidity.mul(reserve0).decode144();
+
+        require(reserve1 <= _MAX_UINT112, "DALPManager/overflow");
+        uint reserve1Share = shareOfLiquidity.mul(reserve1).decode144();
+
+        return (reserve0Share, reserve1Share);
     }
 
     function getDALPTotalValue() public view returns (uint) {
@@ -348,60 +356,9 @@ contract DALPManager is Ownable, ReentrancyGuard {
     /**
      * @notice Remove all liquidity from the active Uniswap v2 pair
      */
-    function _removeUniswapV2Liquidity() internal {
-        (uint reserve0, uint reserve1) = getDalpProportionalReserves();
-
-        require(reserve0 <= _MAX_UINT112, "DALPManager/overflow");
-        uint amountToken0Min = reserve0 - (
-            FixedPoint
-                .encode(uint112(reserve0))
-                .div(_UNISWAP_V2_SLIPPAGE_LIMIT)
-                .decode()
-        );
-
-        require(reserve1 <= _MAX_UINT112, "DALPManager/overflow");
-        uint amountToken1Min = reserve1 - (
-            FixedPoint
-                .encode(uint112(reserve1))
-                .div(_UNISWAP_V2_SLIPPAGE_LIMIT)
-                .decode()
-        );
-
-        IUniswapV2Pair pair = IUniswapV2Pair(_uniswapPair);
-
-        address token0 = pair.token0();
-        address token1 = pair.token1();
-
-        uint liquidity = pair.balanceOf(address(this));
-        pair.approve(address(_uniswapRouter), liquidity);
-
-        _uniswapRouter.removeLiquidity(
-            token0,
-            token1,
-            liquidity,
-            amountToken0Min,
-            amountToken1Min,
-            address(this),
-            now + _UNISWAP_V2_DEADLINE_DELTA // solhint-disable-line not-rely-on-time
-        );
-
-        if (token0 != _WETH) {
-            uint amount0In = IERC20(token0).balanceOf(address(this));
-
-            if (amount0In > 0) {
-                _swapTokensForWETH(token0, amount0In);
-            }
-        }
-
-        if (token1 != _WETH) {
-            uint amount1In = IERC20(token1).balanceOf(address(this));
-
-            if (amount1In > 0) {
-                _swapTokensForWETH(token1, amount1In);
-            }
-        }
-
-        IWETH(_WETH).withdraw(IERC20(_WETH).balanceOf(address(this)));
+    function _removeAllUniswapV2Liquidity() internal {
+        uint liquidity = IUniswapV2Pair(_uniswapPair).balanceOf(address(this));
+        _removeUniswapV2Liquidity(liquidity);
     }
 
     /**
@@ -412,27 +369,19 @@ contract DALPManager is Ownable, ReentrancyGuard {
     function _removeUniswapV2Liquidity(uint liquidity) internal returns (uint) {
         require(liquidity <= _MAX_UINT112, "DALPManager/overflow");
 
-        (uint reserve0, uint reserve1) = getDalpProportionalReserves();
-
-        IUniswapV2Pair pair = IUniswapV2Pair(_uniswapPair);
-        uint totalLiquidity = pair.balanceOf(address(this));
-        require(totalLiquidity <= _MAX_UINT112, "DALPManager/overflow");
-
-        FixedPoint.uq112x112 memory shareOfLiquidity = FixedPoint.fraction(
-            uint112(liquidity),
-            uint112(totalLiquidity)
-        );
+        (uint reserve0, uint reserve1) = getLiquidityProportionalReserves(liquidity);
 
         require(reserve0 <= _MAX_UINT112, "DALPManager/overflow");
-        uint amountToken0Min = uint256(shareOfLiquidity.mul(uint112(reserve0)).decode144()).sub(
-            shareOfLiquidity.div(_UNISWAP_V2_SLIPPAGE_LIMIT).mul(reserve0).decode144()
+        uint amountToken0Min = reserve0.sub(
+            FixedPoint.encode(uint112(reserve0)).div(_UNISWAP_V2_SLIPPAGE_LIMIT).decode()
         );
 
         require(reserve1 <= _MAX_UINT112, "DALPManager/overflow");
-        uint amountToken1Min = uint256(shareOfLiquidity.mul(uint112(reserve1)).decode144()).sub(
-            shareOfLiquidity.div(_UNISWAP_V2_SLIPPAGE_LIMIT).mul(reserve1).decode144()
+        uint amountToken1Min = reserve1.sub(
+            FixedPoint.encode(uint112(reserve1)).div(_UNISWAP_V2_SLIPPAGE_LIMIT).decode()
         );
 
+        IUniswapV2Pair pair = IUniswapV2Pair(_uniswapPair);
         address token0 = pair.token0();
         address token1 = pair.token1();
 
@@ -462,6 +411,9 @@ contract DALPManager is Ownable, ReentrancyGuard {
 
         uint amountETH = amount0ETH.add(amount1ETH);
         IWETH(_WETH).withdraw(amountETH);
+
+        // solhint-disable-next-line not-rely-on-time
+        emit LiquidityEvent(now, getDALPTotalValue());
 
         return amountETH;
     }
@@ -628,11 +580,7 @@ contract DALPManager is Ownable, ReentrancyGuard {
 
         for (uint i = 0; i < _uniswapTokenPairs.length; i++) {
             IUniswapV2Pair pair = IUniswapV2Pair(_uniswapTokenPairs[i]);
-            address token0 = pair.token0();
-            if (token0 != _WETH) _oracle.update(token0);
-
-            address token1 = pair.token1();
-            if (token1 != _WETH) _oracle.update(token1);
+            _updateOracle(pair);
 
             uint rating = _getUniswapV2PairRating(pair);
 
@@ -644,6 +592,14 @@ contract DALPManager is Ownable, ReentrancyGuard {
         }
 
         return bestPair;
+    }
+
+    function _updateOracle(IUniswapV2Pair pair) internal {
+        address token0 = pair.token0();
+        if (token0 != _WETH) _oracle.update(token0);
+
+        address token1 = pair.token1();
+        if (token1 != _WETH) _oracle.update(token1);
     }
 
     //----------------------------------------
