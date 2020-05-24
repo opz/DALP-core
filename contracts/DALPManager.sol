@@ -69,6 +69,10 @@ contract DALPManager is Ownable, ReentrancyGuard {
         uint ethAmount
     );
 
+    event LiquidityEvent(
+        uint totalValue
+    );
+
     //----------------------------------------
     // Constructor
     //----------------------------------------
@@ -147,9 +151,20 @@ contract DALPManager is Ownable, ReentrancyGuard {
     }
 
     function mint() public payable nonReentrant {
-        require(msg.value > 0, "Must send ETH");
+        require(msg.value > 0, "DALPManager/insufficient-value");
+
         uint mintAmount = _calculateMintAmount(msg.value);
         dalp.mint(msg.sender, mintAmount);
+
+        if (_uniswapPair != address(0)) {
+            address token0 = IUniswapV2Pair(_uniswapPair).token0();
+            if (token0 != _WETH) _oracle.update(token0);
+
+            address token1 = IUniswapV2Pair(_uniswapPair).token1();
+            if (token1 != _WETH) _oracle.update(token1);
+
+            _addUniswapV2Liquidity(token0, token1);
+        }
 
         emit MintDALP(msg.sender, mintAmount, msg.value);
     }
@@ -207,6 +222,25 @@ contract DALPManager is Ownable, ReentrancyGuard {
             .div(uint112(totalLiquidityTokens))
             .mul(uint112(contractLiquidityTokens))
             .decode144();
+    }
+
+    function getDALPTotalValue() public view returns (uint) {
+        uint totalValue = address(this).balance;
+
+        if (_uniswapPair != address(0)) {
+            (uint reserve0Share, uint reserve1Share) = getDalpProportionalReserves();
+            IUniswapV2Pair pair = IUniswapV2Pair(_uniswapPair);
+
+            address token0 = pair.token0();
+            address token1 = pair.token1();
+
+            uint valueToken0 = _oracle.consult(token0, reserve0Share);
+            uint valueToken1 = _oracle.consult(token1, reserve1Share);
+
+            totalValue += valueToken0.add(valueToken1);
+        }
+
+        return totalValue;
     }
 
     //----------------------------------------
@@ -299,6 +333,8 @@ contract DALPManager is Ownable, ReentrancyGuard {
             amountB,
             liquidity
         );
+
+        emit LiquidityEvent(getDALPTotalValue());
     }
 
     /**
@@ -653,32 +689,11 @@ contract DALPManager is Ownable, ReentrancyGuard {
      * TODO: Handle cases where one token in the pair is WETH and _oracle.update is called
      */
     function _calculateMintAmount(uint ethValue) private view returns (uint) {
-        uint totalValue = address(this).balance;
-
-        if (dalp.totalSupply() == 0) {
-            return ethValue * _DEFAULT_TOKEN_TO_ETH_FACTOR;
-        }
-
-        if (_uniswapPair != address(0)) {
-            (uint reserve0Share, uint reserve1Share) = getDalpProportionalReserves();
-            IUniswapV2Pair pair = IUniswapV2Pair(_uniswapPair);
-
-            address token0 = pair.token0();
-            address token1 = pair.token1();
-
-            uint valueToken0 = _oracle.consult(token0, reserve0Share);
-            uint valueToken1 = _oracle.consult(token1, reserve1Share);
-
-            totalValue += valueToken0.add(valueToken1);
-        }
-
-        if (totalValue == 0) {
-            return ethValue * _DEFAULT_TOKEN_TO_ETH_FACTOR;
-        }
-
+        uint totalValue = getDALPTotalValue();
         uint totalSupply = dalp.totalSupply();
-        if (totalSupply == 0) {
-            totalSupply = 1;
+
+        if (totalValue == 0 || totalSupply == 0) {
+            return ethValue * _DEFAULT_TOKEN_TO_ETH_FACTOR;
         }
 
         uint112 decimals = 1e18;
