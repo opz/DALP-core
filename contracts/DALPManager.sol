@@ -340,6 +340,65 @@ contract DALPManager is Ownable, ReentrancyGuard {
     }
 
     /**
+     * @notice Remove all liquidity from the active Uniswap v2 pair
+     */
+    function _removeUniswapV2Liquidity() internal {
+        (uint reserve0, uint reserve1) = getDalpProportionalReserves();
+
+        require(reserve0 <= _MAX_UINT112, "DALPManager/overflow");
+        uint amountToken0Min = reserve0 - (
+            FixedPoint
+                .encode(uint112(reserve0))
+                .div(_UNISWAP_V2_SLIPPAGE_LIMIT)
+                .decode()
+        );
+
+        require(reserve1 <= _MAX_UINT112, "DALPManager/overflow");
+        uint amountToken1Min = reserve1 - (
+            FixedPoint
+                .encode(uint112(reserve1))
+                .div(_UNISWAP_V2_SLIPPAGE_LIMIT)
+                .decode()
+        );
+
+        IUniswapV2Pair pair = IUniswapV2Pair(_uniswapPair);
+
+        address token0 = pair.token0();
+        address token1 = pair.token1();
+
+        uint liquidity = pair.balanceOf(address(this));
+        pair.approve(address(_uniswapRouter), liquidity);
+
+        _uniswapRouter.removeLiquidity(
+            token0,
+            token1,
+            liquidity,
+            amountToken0Min,
+            amountToken1Min,
+            address(this),
+            now + _UNISWAP_V2_DEADLINE_DELTA // solhint-disable-line not-rely-on-time
+        );
+
+        if (token0 != _WETH) {
+            uint amount0In = IERC20(token0).balanceOf(address(this));
+
+            if (amount0In > 0) {
+                _swapTokensForWETH(token0, amount0In);
+            }
+        }
+
+        if (token1 != _WETH) {
+            uint amount1In = IERC20(token1).balanceOf(address(this));
+
+            if (amount1In > 0) {
+                _swapTokensForWETH(token1, amount1In);
+            }
+        }
+
+        IWETH(_WETH).withdraw(IERC20(_WETH).balanceOf(address(this)));
+    }
+
+    /**
      * @notice Get the amount of tokens the DALP can afford to add to a Uniswap v2 WETH pair
      * @dev It was necessary to refactor this code out of `_addUniswapV2Liquidity` to avoid a
      *      "Stack too deep" error.
