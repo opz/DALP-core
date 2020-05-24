@@ -123,6 +123,9 @@ describe("DALPManager", () => {
   });
 
   it("calculateMintAmount", async () => {
+    const period = Number(await oracle.PERIOD());
+    const in2Hours = Math.floor(Date.now() / 1000) + period + 600;
+
     const amountFromNothing = await dalpManager.calculateMintAmount(utils.parseEther("1"));
     expect(amountFromNothing).to.be.gt(0);
 
@@ -130,6 +133,9 @@ describe("DALPManager", () => {
 
     const amountAfterMint = await dalpManager.calculateMintAmount(utils.parseEther("1"));
     expect(amountFromNothing).to.be.gt(0);
+
+    // advance time so oracle will update the average price
+    await provider.send("evm_mine", [in2Hours]);
 
     await dalpManager.reallocateLiquidity();
 
