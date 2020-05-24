@@ -114,12 +114,18 @@ contract DALPManager is Ownable, ReentrancyGuard {
 
     /**
      * @notice Allocates all DALP assets to the most profitable Uniswap v2 pair
-     * TODO: Remove liquidity from the existing pair to reallocate
      */
     function reallocateLiquidity() external nonReentrant onlyOwner {
         IUniswapV2Pair pair = _findBestUpdatedUniswapV2Pair();
-        _addUniswapV2Liquidity(pair.token0(), pair.token1());
-        setUniswapPair(address(pair));
+
+        if (_uniswapPair != address(pair)) {
+            if (_uniswapPair != address(0)) {
+                _removeUniswapV2Liquidity();
+            }
+
+            _addUniswapV2Liquidity(pair.token0(), pair.token1());
+            setUniswapPair(address(pair));
+        }
     }
 
     //----------------------------------------
