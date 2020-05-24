@@ -128,6 +128,41 @@ contract DALPManager is Ownable, ReentrancyGuard {
         }
     }
 
+    /**
+     * @notice Redeems an amount of DALP tokens for its ETH value
+     * @param amount The amount of DALP tokens to redeem
+     */
+    function redeem(uint amount) external nonReentrant {
+        require(amount > 0, "DALPManager/insufficient-balance");
+        require(amount <= dalp.balanceOf(msg.sender), "DALPManager/insufficient-balance");
+
+        require(amount <= _MAX_UINT112, "DALPManager/overflow");
+        require(dalp.totalSupply() > 0, "DALPManager/divide-by-zero");
+        require(dalp.totalSupply() <= _MAX_UINT112, "DALPManager/overflow");
+
+        FixedPoint.uq112x112 memory shareOfDALP = FixedPoint.fraction(
+            uint112(amount), uint112(dalp.totalSupply())
+        );
+        dalp.burn(msg.sender, amount);
+
+        require(address(this).balance <= _MAX_UINT112, "DALPManager/overflow");
+        uint amountETH = shareOfDALP.mul(uint112(address(this).balance)).decode144();
+
+        if (_uniswapPair != address(0)) {
+            IUniswapV2Pair pair = IUniswapV2Pair(_uniswapPair);
+
+            uint liquidity = shareOfDALP
+                .mul(pair.balanceOf(address(this)))
+                .decode144();
+
+            _updateOracle(pair);
+
+            amountETH = amountETH.add(_removeUniswapV2Liquidity(liquidity));
+        }
+
+        msg.sender.transfer(amountETH);
+    }
+
     //----------------------------------------
     // External views
     //----------------------------------------
