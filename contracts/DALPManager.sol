@@ -114,12 +114,53 @@ contract DALPManager is Ownable, ReentrancyGuard {
 
     /**
      * @notice Allocates all DALP assets to the most profitable Uniswap v2 pair
-     * TODO: Remove liquidity from the existing pair to reallocate
      */
     function reallocateLiquidity() external nonReentrant onlyOwner {
         IUniswapV2Pair pair = _findBestUpdatedUniswapV2Pair();
-        _addUniswapV2Liquidity(pair.token0(), pair.token1());
-        setUniswapPair(address(pair));
+
+        if (_uniswapPair != address(pair)) {
+            if (_uniswapPair != address(0)) {
+                _removeAllUniswapV2Liquidity();
+            }
+
+            _addUniswapV2Liquidity(pair.token0(), pair.token1());
+            setUniswapPair(address(pair));
+        }
+    }
+
+    /**
+     * @notice Redeems an amount of DALP tokens for its ETH value
+     * @param amount The amount of DALP tokens to redeem
+     */
+    function redeem(uint amount) external nonReentrant {
+        require(amount > 0, "DALPManager/insufficient-balance");
+        require(amount <= dalp.balanceOf(msg.sender), "DALPManager/insufficient-balance");
+
+        require(amount <= _MAX_UINT112, "DALPManager/overflow");
+        require(dalp.totalSupply() > 0, "DALPManager/divide-by-zero");
+        require(dalp.totalSupply() <= _MAX_UINT112, "DALPManager/overflow");
+
+        FixedPoint.uq112x112 memory shareOfDALP = FixedPoint.fraction(
+            uint112(amount), uint112(dalp.totalSupply())
+        );
+        dalp.burn(msg.sender, amount);
+
+        require(address(this).balance <= _MAX_UINT112, "DALPManager/overflow");
+        uint amountETH = shareOfDALP.mul(uint112(address(this).balance)).decode144();
+
+        if (_uniswapPair != address(0)) {
+            IUniswapV2Pair pair = IUniswapV2Pair(_uniswapPair);
+
+            uint liquidity = shareOfDALP
+                .mul(pair.balanceOf(address(this)))
+                .decode144();
+
+            _updateOracle(pair);
+
+            amountETH = amountETH.add(_removeUniswapV2Liquidity(liquidity));
+        }
+
+        msg.sender.transfer(amountETH);
     }
 
     //----------------------------------------
@@ -158,13 +199,9 @@ contract DALPManager is Ownable, ReentrancyGuard {
         dalp.mint(msg.sender, mintAmount);
 
         if (_uniswapPair != address(0)) {
-            address token0 = IUniswapV2Pair(_uniswapPair).token0();
-            if (token0 != _WETH) _oracle.update(token0);
-
-            address token1 = IUniswapV2Pair(_uniswapPair).token1();
-            if (token1 != _WETH) _oracle.update(token1);
-
-            _addUniswapV2Liquidity(token0, token1);
+            IUniswapV2Pair pair = IUniswapV2Pair(_uniswapPair);
+            _updateOracle(pair);
+            _addUniswapV2Liquidity(pair.token0(), pair.token1());
         }
 
         emit MintDALP(msg.sender, mintAmount, msg.value);
@@ -204,25 +241,37 @@ contract DALPManager is Ownable, ReentrancyGuard {
     function getDalpProportionalReserves()
         public
         view
-        returns (uint reserve0Share, uint reserve1Share)
+        returns (uint, uint)
     {
-        uint256 totalLiquidityTokens = getUniswapPoolTokenSupply();
-        uint256 contractLiquidityTokens = getUniswapPoolTokenHoldings();
+        uint256 liquidity = getUniswapPoolTokenHoldings();
+        return getLiquidityProportionalReserves(liquidity);
+    }
+
+    function getLiquidityProportionalReserves(uint liquidity)
+        public
+        view
+        returns (uint, uint)
+    {
+        require(liquidity <= _MAX_UINT112, "DALPManager/overflow");
+
         (uint112 reserve0, uint112 reserve1) = getUniswapPoolReserves();
 
-        require(totalLiquidityTokens < _MAX_UINT112, "DALPManager/overflow");
-        require(contractLiquidityTokens < _MAX_UINT112, "DALPManager/overflow");
+        IUniswapV2Pair pair = IUniswapV2Pair(_uniswapPair);
+        uint totalLiquidity = pair.totalSupply();
+        require(totalLiquidity <= _MAX_UINT112, "DALPManager/overflow");
 
-        // underlying liquidity of contract's pool tokens
-        // returns underlying reserves holding of this contract for each asset
-        reserve0Share = FixedPoint.encode(reserve0)
-            .div(uint112(totalLiquidityTokens))
-            .mul(uint112(contractLiquidityTokens))
-            .decode144();
-        reserve1Share = FixedPoint.encode(reserve1)
-            .div(uint112(totalLiquidityTokens))
-            .mul(uint112(contractLiquidityTokens))
-            .decode144();
+        FixedPoint.uq112x112 memory shareOfLiquidity = FixedPoint.fraction(
+            uint112(liquidity),
+            uint112(totalLiquidity)
+        );
+
+        require(reserve0 <= _MAX_UINT112, "DALPManager/overflow");
+        uint reserve0Share = shareOfLiquidity.mul(reserve0).decode144();
+
+        require(reserve1 <= _MAX_UINT112, "DALPManager/overflow");
+        uint reserve1Share = shareOfLiquidity.mul(reserve1).decode144();
+
+        return (reserve0Share, reserve1Share);
     }
 
     function getDALPTotalValue() public view returns (uint) {
@@ -337,6 +386,71 @@ contract DALPManager is Ownable, ReentrancyGuard {
 
         // solhint-disable-next-line not-rely-on-time
         emit LiquidityEvent(now, getDALPTotalValue());
+    }
+
+    /**
+     * @notice Remove all liquidity from the active Uniswap v2 pair
+     */
+    function _removeAllUniswapV2Liquidity() internal {
+        uint liquidity = IUniswapV2Pair(_uniswapPair).balanceOf(address(this));
+        _removeUniswapV2Liquidity(liquidity);
+    }
+
+    /**
+     * @notice Remove a requested amount of liquidity from the active Uniswap v2 pair
+     * @param liquidity The amount of liquidity to remove
+     * @return The amount of ETH withdrawn from the removed liquidity
+     */
+    function _removeUniswapV2Liquidity(uint liquidity) internal returns (uint) {
+        require(liquidity <= _MAX_UINT112, "DALPManager/overflow");
+
+        (uint reserve0, uint reserve1) = getLiquidityProportionalReserves(liquidity);
+
+        require(reserve0 <= _MAX_UINT112, "DALPManager/overflow");
+        uint amountToken0Min = reserve0.sub(
+            FixedPoint.encode(uint112(reserve0)).div(_UNISWAP_V2_SLIPPAGE_LIMIT).decode()
+        );
+
+        require(reserve1 <= _MAX_UINT112, "DALPManager/overflow");
+        uint amountToken1Min = reserve1.sub(
+            FixedPoint.encode(uint112(reserve1)).div(_UNISWAP_V2_SLIPPAGE_LIMIT).decode()
+        );
+
+        IUniswapV2Pair pair = IUniswapV2Pair(_uniswapPair);
+        address token0 = pair.token0();
+        address token1 = pair.token1();
+
+        pair.approve(address(_uniswapRouter), liquidity);
+
+        (uint amount0, uint amount1) = _uniswapRouter.removeLiquidity(
+            token0,
+            token1,
+            liquidity,
+            amountToken0Min,
+            amountToken1Min,
+            address(this),
+            now + _UNISWAP_V2_DEADLINE_DELTA // solhint-disable-line not-rely-on-time
+        );
+
+        uint amount0ETH = 0;
+        if (token0 != _WETH && amount0 > 0) {
+            uint[] memory amounts0 = _swapTokensForWETH(token0, amount0);
+            amount0ETH = amounts0[1];
+        }
+
+        uint amount1ETH = 0;
+        if (token1 != _WETH && amount1 > 0) {
+            uint[] memory amounts1 = _swapTokensForWETH(token1, amount1);
+            amount1ETH = amounts1[1];
+        }
+
+        uint amountETH = amount0ETH.add(amount1ETH);
+        IWETH(_WETH).withdraw(amountETH);
+
+        // solhint-disable-next-line not-rely-on-time
+        emit LiquidityEvent(now, getDALPTotalValue());
+
+        return amountETH;
     }
 
     /**
@@ -501,11 +615,7 @@ contract DALPManager is Ownable, ReentrancyGuard {
 
         for (uint i = 0; i < _uniswapTokenPairs.length; i++) {
             IUniswapV2Pair pair = IUniswapV2Pair(_uniswapTokenPairs[i]);
-            address token0 = pair.token0();
-            if (token0 != _WETH) _oracle.update(token0);
-
-            address token1 = pair.token1();
-            if (token1 != _WETH) _oracle.update(token1);
+            _updateOracle(pair);
 
             uint rating = _getUniswapV2PairRating(pair);
 
@@ -517,6 +627,14 @@ contract DALPManager is Ownable, ReentrancyGuard {
         }
 
         return bestPair;
+    }
+
+    function _updateOracle(IUniswapV2Pair pair) internal {
+        address token0 = pair.token0();
+        if (token0 != _WETH) _oracle.update(token0);
+
+        address token1 = pair.token1();
+        if (token1 != _WETH) _oracle.update(token1);
     }
 
     //----------------------------------------
