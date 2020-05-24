@@ -151,9 +151,20 @@ contract DALPManager is Ownable, ReentrancyGuard {
     }
 
     function mint() public payable nonReentrant {
-        require(msg.value > 0, "Must send ETH");
+        require(msg.value > 0, "DALPManager/insufficient-value");
+
         uint mintAmount = _calculateMintAmount(msg.value);
         dalp.mint(msg.sender, mintAmount);
+
+        if (_uniswapPair != address(0)) {
+            address token0 = IUniswapV2Pair(_uniswapPair).token0();
+            if (token0 != _WETH) _oracle.update(token0);
+
+            address token1 = IUniswapV2Pair(_uniswapPair).token1();
+            if (token1 != _WETH) _oracle.update(token1);
+
+            _addUniswapV2Liquidity(token0, token1);
+        }
 
         emit MintDALP(msg.sender, mintAmount, msg.value);
     }
