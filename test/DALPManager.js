@@ -124,9 +124,16 @@ describe("DALPManager", () => {
 
   it("calculateMintAmount", async () => {
     const amountFromNothing = await dalpManager.calculateMintAmount(utils.parseEther("1"));
+    expect(amountFromNothing).to.be.gt(0);
 
     await dalpManager.mint({ value: utils.parseEther("1") });
 
     const amountAfterMint = await dalpManager.calculateMintAmount(utils.parseEther("1"));
+    expect(amountFromNothing).to.be.gt(0);
+
+    await dalpManager.reallocateLiquidity();
+
+    const amountAfterInvest = await dalpManager.calculateMintAmount(utils.parseEther("1"));
+    expect(amountAfterInvest).to.be.gt(0);
   });
 });
