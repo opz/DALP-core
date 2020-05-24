@@ -70,6 +70,7 @@ contract DALPManager is Ownable, ReentrancyGuard {
     );
 
     event LiquidityEvent(
+        uint timestamp,
         uint totalValue
     );
 
@@ -334,7 +335,8 @@ contract DALPManager is Ownable, ReentrancyGuard {
             liquidity
         );
 
-        emit LiquidityEvent(getDALPTotalValue());
+        // solhint-disable-next-line not-rely-on-time
+        emit LiquidityEvent(now, getDALPTotalValue());
     }
 
     /**
