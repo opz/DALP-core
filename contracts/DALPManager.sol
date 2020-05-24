@@ -405,6 +405,68 @@ contract DALPManager is Ownable, ReentrancyGuard {
     }
 
     /**
+     * @notice Remove a requested amount of liquidity from the active Uniswap v2 pair
+     * @param liquidity The amount of liquidity to remove
+     * @return The amount of ETH withdrawn from the removed liquidity
+     */
+    function _removeUniswapV2Liquidity(uint liquidity) internal returns (uint) {
+        require(liquidity <= _MAX_UINT112, "DALPManager/overflow");
+
+        (uint reserve0, uint reserve1) = getDalpProportionalReserves();
+
+        IUniswapV2Pair pair = IUniswapV2Pair(_uniswapPair);
+        uint totalLiquidity = pair.balanceOf(address(this));
+        require(totalLiquidity <= _MAX_UINT112, "DALPManager/overflow");
+
+        FixedPoint.uq112x112 memory shareOfLiquidity = FixedPoint.fraction(
+            uint112(liquidity),
+            uint112(totalLiquidity)
+        );
+
+        require(reserve0 <= _MAX_UINT112, "DALPManager/overflow");
+        uint amountToken0Min = uint256(shareOfLiquidity.mul(uint112(reserve0)).decode144()).sub(
+            shareOfLiquidity.div(_UNISWAP_V2_SLIPPAGE_LIMIT).mul(reserve0).decode144()
+        );
+
+        require(reserve1 <= _MAX_UINT112, "DALPManager/overflow");
+        uint amountToken1Min = uint256(shareOfLiquidity.mul(uint112(reserve1)).decode144()).sub(
+            shareOfLiquidity.div(_UNISWAP_V2_SLIPPAGE_LIMIT).mul(reserve1).decode144()
+        );
+
+        address token0 = pair.token0();
+        address token1 = pair.token1();
+
+        pair.approve(address(_uniswapRouter), liquidity);
+
+        (uint amount0, uint amount1) = _uniswapRouter.removeLiquidity(
+            token0,
+            token1,
+            liquidity,
+            amountToken0Min,
+            amountToken1Min,
+            address(this),
+            now + _UNISWAP_V2_DEADLINE_DELTA // solhint-disable-line not-rely-on-time
+        );
+
+        uint amount0ETH = 0;
+        if (token0 != _WETH && amount0 > 0) {
+            uint[] memory amounts0 = _swapTokensForWETH(token0, amount0);
+            amount0ETH = amounts0[1];
+        }
+
+        uint amount1ETH = 0;
+        if (token1 != _WETH && amount1 > 0) {
+            uint[] memory amounts1 = _swapTokensForWETH(token1, amount1);
+            amount1ETH = amounts1[1];
+        }
+
+        uint amountETH = amount0ETH.add(amount1ETH);
+        IWETH(_WETH).withdraw(amountETH);
+
+        return amountETH;
+    }
+
+    /**
      * @notice Get the amount of tokens the DALP can afford to add to a Uniswap v2 WETH pair
      * @dev It was necessary to refactor this code out of `_addUniswapV2Liquidity` to avoid a
      *      "Stack too deep" error.
