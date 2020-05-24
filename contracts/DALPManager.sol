@@ -194,15 +194,19 @@ contract DALPManager is Ownable, ReentrancyGuard {
         uint256 contractLiquidityTokens = getUniswapPoolTokenHoldings();
         (uint112 reserve0, uint112 reserve1) = getUniswapPoolReserves();
 
-        require(totalLiquidityTokens < _MAX_UINT112, "UINT112 overflow");
-        require(contractLiquidityTokens < _MAX_UINT112, "UINT112 overflow");
-
-        uint112 contractLiquidityTokensCasted = uint112(contractLiquidityTokens); // much higher
+        require(totalLiquidityTokens < _MAX_UINT112, "DALPManager/overflow");
+        require(contractLiquidityTokens < _MAX_UINT112, "DALPManager/overflow");
 
         // underlying liquidity of contract's pool tokens
         // returns underlying reserves holding of this contract for each asset
-        reserve0Share = FixedPoint.encode(reserve0).div(contractLiquidityTokensCasted).mul(totalLiquidityTokens).decode144();
-        reserve1Share = FixedPoint.encode(reserve1).div(contractLiquidityTokensCasted).mul(totalLiquidityTokens).decode144();
+        reserve0Share = FixedPoint.encode(reserve0)
+            .div(uint112(totalLiquidityTokens))
+            .mul(uint112(contractLiquidityTokens))
+            .decode144();
+        reserve1Share = FixedPoint.encode(reserve1)
+            .div(uint112(totalLiquidityTokens))
+            .mul(uint112(contractLiquidityTokens))
+            .decode144();
     }
 
     //----------------------------------------
