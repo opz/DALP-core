@@ -176,7 +176,8 @@ contract DALPManager is Ownable, ReentrancyGuard {
     }
 
     function calculateMintAmount(uint ethValue) external view returns (uint) {
-        return _calculateMintAmount(ethValue);
+        uint totalValue = getDALPTotalValue();
+        return _calculateMintAmount(ethValue, totalValue);
     }
 
     //----------------------------------------
@@ -195,12 +196,16 @@ contract DALPManager is Ownable, ReentrancyGuard {
     function mint() public payable nonReentrant {
         require(msg.value > 0, "DALPManager/insufficient-value");
 
-        uint mintAmount = _calculateMintAmount(msg.value);
+        if (_uniswapPair != address(0)) {
+            _updateOracle(IUniswapV2Pair(_uniswapPair));
+        }
+
+        uint totalValue = getDALPTotalValue().sub(msg.value);
+        uint mintAmount = _calculateMintAmount(msg.value, totalValue);
         dalp.mint(msg.sender, mintAmount);
 
         if (_uniswapPair != address(0)) {
             IUniswapV2Pair pair = IUniswapV2Pair(_uniswapPair);
-            _updateOracle(pair);
             _addUniswapV2Liquidity(pair.token0(), pair.token1());
         }
 
@@ -212,10 +217,6 @@ contract DALPManager is Ownable, ReentrancyGuard {
         require(dalp.balanceOf(msg.sender) >= tokensToBurn, "Insufficient balance");
 
         dalp.burn(msg.sender, tokensToBurn);
-    }
-
-    function findBestUniswapV2Pair() public view returns (address) {
-        return address(_findBestUniswapV2Pair());
     }
 
     //----------------------------------------
@@ -291,6 +292,31 @@ contract DALPManager is Ownable, ReentrancyGuard {
         }
 
         return totalValue;
+    }
+
+    /**
+     * @notice Get the ETH value of an amount of DALP tokens
+     * @param amount The amount of DALP tokens
+     * @return The total ETH value of the DALP tokens
+     */
+    function getDALPValue(uint amount) public view returns (uint) {
+        require(amount > 0, "DALPManager/insufficient-balance");
+        require(amount <= _MAX_UINT112, "DALPManager/overflow");
+        require(dalp.totalSupply() > 0, "DALPManager/divide-by-zero");
+        require(dalp.totalSupply() <= _MAX_UINT112, "DALPManager/overflow");
+
+        FixedPoint.uq112x112 memory shareOfDALP = FixedPoint.fraction(
+            uint112(amount), uint112(dalp.totalSupply())
+        );
+
+        uint totalValue = getDALPTotalValue();
+        require(totalValue <= _MAX_UINT112, "DALPManager/overflow");
+
+        return shareOfDALP.mul(uint112(totalValue)).decode144();
+    }
+
+    function findBestUniswapV2Pair() public view returns (address) {
+        return address(_findBestUniswapV2Pair());
     }
 
     //----------------------------------------
@@ -805,31 +831,19 @@ contract DALPManager is Ownable, ReentrancyGuard {
     // Private views
     //----------------------------------------
 
-    /**
-     * TODO: Handle cases where one token in the pair is WETH and _oracle.update is called
-     */
-    function _calculateMintAmount(uint ethValue) private view returns (uint) {
-        uint totalValue = getDALPTotalValue();
+    function _calculateMintAmount(uint ethValue, uint totalValue) private view returns (uint) {
         uint totalSupply = dalp.totalSupply();
 
         if (totalValue == 0 || totalSupply == 0) {
             return ethValue * _DEFAULT_TOKEN_TO_ETH_FACTOR;
         }
 
-        uint112 decimals = 1e18;
-
+        require(ethValue <= _MAX_UINT112, "DALPManager/overflow");
         require(totalValue <= _MAX_UINT112, "DALPManager/overflow");
         require(totalSupply <= _MAX_UINT112, "DALPManager/overflow");
-        uint144 pricePerToken = FixedPoint
-            .fraction(uint112(totalValue), uint112(totalSupply))
-            .mul(decimals)
-            .decode144();
 
-        require(ethValue <= _MAX_UINT112, "DALPManager/overflow");
-        require(pricePerToken <= _MAX_UINT112, "DALPManager/overflow");
-        return FixedPoint.encode(uint112(ethValue))
-            .div(uint112(pricePerToken))
-            .mul(decimals)
+        return FixedPoint.fraction(uint112(ethValue), uint112(totalValue))
+            .mul(uint112(totalSupply))
             .decode144();
     }
 }
