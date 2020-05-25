@@ -8,7 +8,8 @@ import {UniswapV2Library} from "@uniswap/v2-periphery/contracts/libraries/Uniswa
 contract OracleManager {
     using FixedPoint for *;
 
-    uint public constant PERIOD = 1 hours;
+    // Set to a small value for demo and testing
+    uint public constant PERIOD = 1 seconds;
 
     address private _factory;
     address private _weth;
