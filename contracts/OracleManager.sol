@@ -27,20 +27,6 @@ contract OracleManager {
 
     mapping(address => OraclePairState) private _oraclePairs;
 
-    // mapping where you can insert both assets in either order
-    // to pull correct oracleState struct
-    // mapping[a][b] = struct
-    // mapping[b][a] = struct
-    // OR...
-    // sort in discrete way using some measurement => deterministic output
-
-    // addPair function instead of constructor instantiation
-    // addPair is called on the first time liquidity is migrated to a pair
-
-    // update and consult methods need have specified parameters to update/consult correct pair
-
-    // when user mints, manager contract needs to know which token pair is active
-
     constructor(address factory, address weth) public {
         _factory = factory;
         _weth = weth;
