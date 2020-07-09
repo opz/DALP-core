@@ -90,7 +90,7 @@ describe("DALPManager", () => {
     await provider.send("evm_mine", [in2Hours]);
 
     // token0 <-> WETH pair should be best because it has the most growth with least liquidity
-    expect(dalpManager.testFindBestUpdatedUniswapV2Pair(pairWETH0.address)).to.not.reverted;
+    await expect(dalpManager.testFindBestUpdatedUniswapV2Pair(pairWETH0.address)).to.not.reverted;
   });
 
   it("reallocateLiquidity", async () => {
