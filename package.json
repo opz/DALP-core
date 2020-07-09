@@ -2,9 +2,17 @@
   "name": "dalp-core",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "keywords": [
+    "ethereum",
+    "solidity",
+    "defi"
+  ],
+  "files": [
+    "contracts",
+    "artifacts",
+    "config"
+  ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "check": "solhint \"contracts/**/*.sol\""
   },
   "husky": {
